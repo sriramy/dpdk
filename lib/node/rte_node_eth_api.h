@@ -23,6 +23,7 @@ extern "C" {
 #include <rte_compat.h>
 #include <rte_common.h>
 #include <rte_mempool.h>
+#include <rte_graph.h>
 
 /**
  * Port config for ethdev_rx and ethdev_tx node.
@@ -57,6 +58,22 @@ struct rte_node_ethdev_config {
  */
 int rte_node_eth_config(struct rte_node_ethdev_config *cfg,
 			uint16_t cnt, uint16_t nb_graphs);
+
+struct rte_node_ethdev_rx_config {
+	uint16_t link_id;
+	uint8_t queue_id;
+	char next_node[RTE_NODE_NAMESIZE];
+};
+
+rte_node_t rte_node_ethdev_rx_config(struct rte_node_ethdev_rx_config *config);
+
+struct rte_node_ethdev_tx_config {
+	uint16_t link_id;
+	uint8_t queue_id;
+};
+
+rte_node_t rte_node_ethdev_tx_config(struct rte_node_ethdev_tx_config *config);
+
 #ifdef __cplusplus
 }
 #endif
