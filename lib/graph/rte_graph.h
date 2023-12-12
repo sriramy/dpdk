@@ -469,6 +469,7 @@ struct rte_node_register {
 	char name[RTE_NODE_NAMESIZE]; /**< Name of the node. */
 	uint64_t flags;		      /**< Node configuration flag. */
 #define RTE_NODE_SOURCE_F (1ULL << 0) /**< Node type is source. */
+#define RTE_NODE_EVENTS_F (1ULL << 1) /**< Node processes rte_events. */
 	rte_node_process_t process; /**< Node process function. */
 	rte_node_init_t init;       /**< Node init function. */
 	rte_node_fini_t fini;       /**< Node fini function. */
