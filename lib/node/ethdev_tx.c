@@ -53,7 +53,7 @@ ethdev_tx_node_init(const struct rte_graph *graph, struct rte_node *node)
 
 	/* Update port and queue */
 	ctx->port = port_id;
-	ctx->queue = graph->id;
+	ctx->queue = 0;
 
 	return 0;
 }
