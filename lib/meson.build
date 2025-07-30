@@ -68,6 +68,7 @@ libraries = [
         'pipeline',
         'graph',
         'node',
+        'sampler',
 ]
 
 always_enable = [
