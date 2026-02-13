@@ -434,6 +434,53 @@ int rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
 					uint64_t id,
 					struct rte_sampler_xstats_name *name);
 
+/**
+ * Set xstats filter for a source by name patterns
+ *
+ * Allows filtering which statistics to sample based on name patterns.
+ * Only matching stats will be sampled. Clear filter to sample all stats.
+ *
+ * @param source
+ *   Pointer to source structure
+ * @param patterns
+ *   Array of name patterns to match (supports wildcards: * and ?)
+ * @param num_patterns
+ *   Number of patterns in array
+ * @return
+ *   Zero on success, negative on error
+ */
+int rte_sampler_source_set_filter(struct rte_sampler_source *source,
+				   const char **patterns,
+				   unsigned int num_patterns);
+
+/**
+ * Clear xstats filter for a source
+ *
+ * Removes any active filter, allowing all stats to be sampled.
+ *
+ * @param source
+ *   Pointer to source structure
+ * @return
+ *   Zero on success, negative on error
+ */
+int rte_sampler_source_clear_filter(struct rte_sampler_source *source);
+
+/**
+ * Get active filter patterns for a source
+ *
+ * @param source
+ *   Pointer to source structure
+ * @param patterns
+ *   Array to store filter patterns
+ * @param max_patterns
+ *   Maximum number of patterns to retrieve
+ * @return
+ *   Number of active patterns, or negative on error
+ */
+int rte_sampler_source_get_filter(struct rte_sampler_source *source,
+				   char **patterns,
+				   unsigned int max_patterns);
+
 #ifdef __cplusplus
 }
 #endif

@@ -15,6 +15,7 @@
 #define MAX_SOURCES_PER_SESSION 64
 #define MAX_SINKS_PER_SESSION 16
 #define MAX_XSTATS_PER_SOURCE 256
+#define MAX_FILTER_PATTERNS 32
 
 /**
  * Sampler source structure
@@ -29,6 +30,12 @@ struct rte_sampler_xstats_name xstats_names[MAX_XSTATS_PER_SOURCE];
 uint64_t ids[MAX_XSTATS_PER_SOURCE];
 uint64_t values[MAX_XSTATS_PER_SOURCE];
 unsigned int xstats_count;
+/* Filter support */
+char *filter_patterns[MAX_FILTER_PATTERNS];
+unsigned int num_filter_patterns;
+uint64_t filtered_ids[MAX_XSTATS_PER_SOURCE];
+unsigned int filtered_count;
+uint8_t filter_active;
 uint8_t valid;
 };
 
@@ -361,15 +368,18 @@ ret, MAX_XSTATS_PER_SOURCE);
 
 source->xstats_count = ret < MAX_XSTATS_PER_SOURCE ? 
        ret : MAX_XSTATS_PER_SOURCE;
+
+/* Apply filter to determine which stats to sample */
+apply_filter(source);
 }
 
-/* Get xstats values */
-if (source->xstats_count > 0) {
+/* Get xstats values (using filtered IDs if filter is active) */
+if (source->filtered_count > 0) {
 ret = source->ops.xstats_get(
 source->source_id,
-source->ids,
+source->filtered_ids,
 source->values,
-source->xstats_count,
+source->filtered_count,
 source->user_data);
 if (ret < 0)
 continue;
@@ -393,9 +403,9 @@ ret = sink->ops.output(
 source->name,
 source->source_id,
 names_to_pass,
-source->ids,
+source->filtered_ids,
 source->values,
-source->xstats_count,
+source->filtered_count,
 sink->user_data);
 if (ret < 0) {
 /* Continue with other sinks on error */
@@ -628,4 +638,182 @@ return 0;
 }
 
 return -ENOENT;
+}
+
+/**
+ * Simple wildcard pattern matching
+ * Supports * (match any) and ? (match one character)
+ */
+static int
+match_pattern(const char *pattern, const char *str)
+{
+while (*pattern && *str) {
+if (*pattern == '*') {
+/* Skip consecutive asterisks */
+while (*(pattern + 1) == '*')
+pattern++;
+
+/* If asterisk is last character, match */
+if (!*(pattern + 1))
+return 1;
+
+/* Try matching rest of pattern with rest of string */
+while (*str) {
+if (match_pattern(pattern + 1, str))
+return 1;
+str++;
+}
+return 0;
+} else if (*pattern == '?' || *pattern == *str) {
+pattern++;
+str++;
+} else {
+return 0;
+}
+}
+
+/* Handle trailing asterisks */
+while (*pattern == '*')
+pattern++;
+
+return (*pattern == '\0' && *str == '\0');
+}
+
+/**
+ * Check if a stat name matches any filter pattern
+ */
+static int
+matches_filter(struct rte_sampler_source *source, const char *name)
+{
+unsigned int i;
+
+if (!source->filter_active || source->num_filter_patterns == 0)
+return 1;  /* No filter, include all */
+
+for (i = 0; i < source->num_filter_patterns; i++) {
+if (match_pattern(source->filter_patterns[i], name))
+return 1;
+}
+
+return 0;
+}
+
+/**
+ * Apply filter to cached xstats
+ */
+static void
+apply_filter(struct rte_sampler_source *source)
+{
+unsigned int i, j;
+
+if (!source->filter_active) {
+source->filtered_count = source->xstats_count;
+for (i = 0; i < source->xstats_count; i++)
+source->filtered_ids[i] = source->ids[i];
+return;
+}
+
+j = 0;
+for (i = 0; i < source->xstats_count; i++) {
+if (matches_filter(source, source->xstats_names[i].name)) {
+source->filtered_ids[j++] = source->ids[i];
+}
+}
+source->filtered_count = j;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_set_filter)
+int
+rte_sampler_source_set_filter(struct rte_sampler_source *source,
+       const char **patterns,
+       unsigned int num_patterns)
+{
+unsigned int i;
+
+if (source == NULL || !source->valid)
+return -EINVAL;
+
+if (patterns == NULL || num_patterns == 0)
+return -EINVAL;
+
+if (num_patterns > MAX_FILTER_PATTERNS)
+return -E2BIG;
+
+/* Clear old patterns */
+for (i = 0; i < source->num_filter_patterns; i++) {
+rte_free(source->filter_patterns[i]);
+source->filter_patterns[i] = NULL;
+}
+
+/* Copy new patterns */
+source->num_filter_patterns = 0;
+for (i = 0; i < num_patterns; i++) {
+source->filter_patterns[i] = rte_strdup(patterns[i]);
+if (source->filter_patterns[i] == NULL) {
+/* Cleanup on failure */
+rte_sampler_source_clear_filter(source);
+return -ENOMEM;
+}
+source->num_filter_patterns++;
+}
+
+source->filter_active = 1;
+
+/* Apply filter to existing stats */
+if (source->xstats_count > 0)
+apply_filter(source);
+
+return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_clear_filter)
+int
+rte_sampler_source_clear_filter(struct rte_sampler_source *source)
+{
+unsigned int i;
+
+if (source == NULL || !source->valid)
+return -EINVAL;
+
+/* Free all patterns */
+for (i = 0; i < source->num_filter_patterns; i++) {
+rte_free(source->filter_patterns[i]);
+source->filter_patterns[i] = NULL;
+}
+
+source->num_filter_patterns = 0;
+source->filter_active = 0;
+source->filtered_count = source->xstats_count;
+
+/* Reset filtered IDs to include all */
+for (i = 0; i < source->xstats_count; i++)
+source->filtered_ids[i] = source->ids[i];
+
+return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_get_filter)
+int
+rte_sampler_source_get_filter(struct rte_sampler_source *source,
+       char **patterns,
+       unsigned int max_patterns)
+{
+unsigned int i, count;
+
+if (source == NULL || !source->valid)
+return -EINVAL;
+
+if (!source->filter_active)
+return 0;
+
+count = (max_patterns < source->num_filter_patterns) ?
+max_patterns : source->num_filter_patterns;
+
+if (patterns != NULL) {
+for (i = 0; i < count; i++) {
+patterns[i] = source->filter_patterns[i];
+}
+}
+
+return source->num_filter_patterns;
 }
