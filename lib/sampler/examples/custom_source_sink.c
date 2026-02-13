@@ -19,8 +19,8 @@
  * Store any source-specific state here
  */
 struct custom_source_data {
-uint64_t custom_sampler_id;  /**< Your custom ID to pass to sink */
-void *source_specific_state;  /**< Any other source state */
+	uint64_t custom_sampler_id;  /**< Your custom ID to pass to sink */
+	void *source_specific_state;  /**< Any other source state */
 };
 
 /**
@@ -28,8 +28,8 @@ void *source_specific_state;  /**< Any other source state */
  * Store any sink-specific state here
  */
 struct custom_sink_data {
-FILE *output_file;
-uint64_t sink_instance_id;
+	FILE *output_file;
+	uint64_t sink_instance_id;
 };
 
 /**
@@ -39,7 +39,7 @@ uint64_t sink_instance_id;
  * The source_id is the ID you passed during registration.
  */
 static int
-custom_source_xstats_names_get(uint16_t source_id,
+		custom_source_xstats_names_get(uint16_t source_id,
 struct rte_sampler_xstats_name *xstats_names,
 uint64_t *ids,
 unsigned int size,
@@ -71,11 +71,11 @@ return num_stats;
  * This is called to get the actual values of the statistics.
  */
 static int
-custom_source_xstats_get(uint16_t source_id,
- const uint64_t *ids,
- uint64_t *values,
- unsigned int n,
- void *user_data)
+		custom_source_xstats_get(uint16_t source_id,
+		const uint64_t *ids,
+		uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct custom_source_data *data = user_data;
 unsigned int i;
@@ -93,10 +93,10 @@ return n;
  * Custom source: xstats_reset callback (optional)
  */
 static int
-custom_source_xstats_reset(uint16_t source_id,
-    const uint64_t *ids,
-    unsigned int n,
-    void *user_data)
+		custom_source_xstats_reset(uint16_t source_id,
+		const uint64_t *ids,
+		unsigned int n,
+		void *user_data)
 {
 /* Reset your statistics if needed */
 return 0;
@@ -109,13 +109,13 @@ return 0;
  * You can access your custom sampler ID through user_data.
  */
 static int
-custom_sink_output(const char *source_name,
-   uint16_t source_id,
-   const struct rte_sampler_xstats_name *xstats_names,
-   const uint64_t *ids,
-   const uint64_t *values,
-   unsigned int n,
-   void *user_data)
+		custom_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct custom_sink_data *sink_data = user_data;
 unsigned int i;
@@ -224,24 +224,24 @@ printf("Sink has instance_id: %lu\n", sink_data->sink_instance_id);
  * Advanced: Using a mapping structure to associate source IDs with sampler IDs
  */
 struct sampler_id_map {
-uint16_t source_id;
-uint64_t sampler_id;
+	uint16_t source_id;
+	uint64_t sampler_id;
 };
 
 struct advanced_sink_data {
-FILE *output_file;
-struct sampler_id_map *id_map;
-unsigned int num_mappings;
+	FILE *output_file;
+	struct sampler_id_map *id_map;
+	unsigned int num_mappings;
 };
 
 static int
-advanced_sink_output(const char *source_name,
-     uint16_t source_id,
-     const struct rte_sampler_xstats_name *xstats_names,
-     const uint64_t *ids,
-     const uint64_t *values,
-     unsigned int n,
-     void *user_data)
+		advanced_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct advanced_sink_data *sink_data = user_data;
 uint64_t sampler_id = 0;

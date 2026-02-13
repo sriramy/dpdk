@@ -37,7 +37,7 @@ force_quit = true;
  * Demonstrate ring buffer sink
  */
 static void
-demo_ringbuffer_sink(struct rte_sampler_session *session)
+		demo_ringbuffer_sink(struct rte_sampler_session *session)
 {
 struct rte_sampler_sink_ringbuffer_conf rb_conf;
 struct rte_sampler_sink *rb_sink;
@@ -64,7 +64,7 @@ count = rte_sampler_sink_ringbuffer_count(rb_sink);
 printf("\nRing buffer contains %d entries\n", count);
 
 if (count > 0) {
-entries = calloc(count, sizeof(struct rte_sampler_ringbuffer_entry));
+		entries = calloc(count, sizeof(struct rte_sampler_ringbuffer_entry));
 if (entries != NULL) {
 int read = rte_sampler_sink_ringbuffer_read(rb_sink, entries, count);
 printf("Read %d entries from ring buffer:\n", read);
@@ -102,7 +102,7 @@ printf("Ring buffer sink destroyed\n");
  * Demonstrate file sinks
  */
 static void
-demo_file_sinks(struct rte_sampler_session *session)
+		demo_file_sinks(struct rte_sampler_session *session)
 {
 struct rte_sampler_sink_file_conf file_conf;
 struct rte_sampler_sink *csv_sink, *json_sink, *text_sink;
@@ -156,7 +156,7 @@ printf("\nFiles written to /tmp/sampler_output.{csv,json,txt}\n");
  * Demonstrate CTF sink
  */
 static void
-demo_ctf_sink(struct rte_sampler_session *session)
+		demo_ctf_sink(struct rte_sampler_session *session)
 {
 struct rte_sampler_sink_ctf_conf ctf_conf;
 struct rte_sampler_sink *ctf_sink;

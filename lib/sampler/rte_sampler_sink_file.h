@@ -34,10 +34,10 @@ RTE_SAMPLER_SINK_FILE_FORMAT_TEXT,      /**< Plain text format */
  * File sink configuration
  */
 struct rte_sampler_sink_file_conf {
-const char *filepath;                           /**< Output file path */
-enum rte_sampler_sink_file_format format;       /**< Output format */
-uint32_t buffer_size;                           /**< I/O buffer size (0=default) */
-uint8_t append;                                 /**< 1=append, 0=overwrite */
+	const char *filepath;                           /**< Output file path */
+	enum rte_sampler_sink_file_format format;       /**< Output format */
+	uint32_t buffer_size;                           /**< I/O buffer size (0=default) */
+	uint8_t append;                                 /**< 1=append, 0=overwrite */
 };
 
 /**

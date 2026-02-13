@@ -15,19 +15,19 @@
  * Eventdev source user data
  */
 struct eventdev_source_data {
-enum rte_sampler_eventdev_mode mode;
-uint8_t queue_port_id;
+	enum rte_sampler_eventdev_mode mode;
+	uint8_t queue_port_id;
 };
 
 /**
  * Eventdev xstats_names_get callback
  */
 static int
-eventdev_xstats_names_get(uint16_t source_id,
-  struct rte_sampler_xstats_name *xstats_names,
-  uint64_t *ids,
-  unsigned int size,
-  void *user_data)
+		eventdev_xstats_names_get(uint16_t source_id,
+		struct rte_sampler_xstats_name *xstats_names,
+		uint64_t *ids,
+		unsigned int size,
+		void *user_data)
 {
 struct eventdev_source_data *data = user_data;
 struct rte_event_dev_xstats_name *eventdev_names = NULL;
@@ -60,7 +60,7 @@ return -ENOMEM;
 }
 
 /* Get xstats names from eventdev */
-ret = rte_event_dev_xstats_names_get((uint8_t)source_id,
+		ret = rte_event_dev_xstats_names_get((uint8_t)source_id,
      mode,
      data->queue_port_id,
      eventdev_names,
@@ -69,7 +69,7 @@ ret = rte_event_dev_xstats_names_get((uint8_t)source_id,
 
 /* Copy names to sampler format */
 if (ret > 0 && xstats_names != NULL && eventdev_names != NULL) {
-for (i = 0; i < (unsigned int)ret && i < size; i++) {
+		for (i = 0; i < (unsigned int)ret && i < size; i++) {
 rte_strscpy(xstats_names[i].name,
    eventdev_names[i].name,
    RTE_SAMPLER_XSTATS_NAME_SIZE);
@@ -85,11 +85,11 @@ return ret;
  * Eventdev xstats_get callback
  */
 static int
-eventdev_xstats_get(uint16_t source_id,
-    const uint64_t *ids,
-    uint64_t *values,
-    unsigned int n,
-    void *user_data)
+		eventdev_xstats_get(uint16_t source_id,
+		const uint64_t *ids,
+		uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct eventdev_source_data *data = user_data;
 enum rte_event_dev_xstats_mode mode;
@@ -109,7 +109,7 @@ default:
 return -EINVAL;
 }
 
-return rte_event_dev_xstats_get((uint8_t)source_id,
+		return rte_event_dev_xstats_get((uint8_t)source_id,
 mode,
 data->queue_port_id,
 ids,
@@ -121,10 +121,10 @@ n);
  * Eventdev xstats_reset callback
  */
 static int
-eventdev_xstats_reset(uint16_t source_id,
-      const uint64_t *ids,
-      unsigned int n,
-      void *user_data)
+		eventdev_xstats_reset(uint16_t source_id,
+		const uint64_t *ids,
+		unsigned int n,
+		void *user_data)
 {
 struct eventdev_source_data *data = user_data;
 enum rte_event_dev_xstats_mode mode;
@@ -148,7 +148,7 @@ default:
 return -EINVAL;
 }
 
-return rte_event_dev_xstats_reset((uint8_t)source_id,
+		return rte_event_dev_xstats_reset((uint8_t)source_id,
   mode,
   reset_queue_port_id,
   ids,
@@ -157,9 +157,9 @@ return rte_event_dev_xstats_reset((uint8_t)source_id,
 
 RTE_EXPORT_SYMBOL(rte_sampler_eventdev_source_register)
 struct rte_sampler_source *
-rte_sampler_eventdev_source_register(struct rte_sampler_session *session,
-      uint8_t dev_id,
-      const struct rte_sampler_eventdev_conf *conf)
+		rte_sampler_eventdev_source_register(struct rte_sampler_session *session,
+		uint8_t dev_id,
+		const struct rte_sampler_eventdev_conf *conf)
 {
 struct rte_sampler_source_ops ops;
 struct eventdev_source_data *data;

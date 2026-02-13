@@ -24,19 +24,19 @@ extern "C" {
  * Ring buffer sample entry
  */
 struct rte_sampler_ringbuffer_entry {
-uint64_t timestamp;                  /**< Sample timestamp (cycles) */
-char source_name[64];                /**< Source name */
-uint16_t source_id;                  /**< Source ID */
-uint16_t num_stats;                  /**< Number of stats in this entry */
-uint64_t *ids;                       /**< Stat IDs */
-uint64_t *values;                    /**< Stat values */
+	uint64_t timestamp;                  /**< Sample timestamp (cycles) */
+	char source_name[64];                /**< Source name */
+	uint16_t source_id;                  /**< Source ID */
+	uint16_t num_stats;                  /**< Number of stats in this entry */
+	uint64_t *ids;                       /**< Stat IDs */
+	uint64_t *values;                    /**< Stat values */
 };
 
 /**
  * Ring buffer sink configuration
  */
 struct rte_sampler_sink_ringbuffer_conf {
-uint32_t max_entries;  /**< Maximum number of entries in ring buffer */
+	uint32_t max_entries;  /**< Maximum number of entries in ring buffer */
 };
 
 /**
@@ -79,8 +79,8 @@ int rte_sampler_sink_ringbuffer_count(struct rte_sampler_sink *sink);
  *   Number of entries retrieved, or negative on error
  */
 int rte_sampler_sink_ringbuffer_read(struct rte_sampler_sink *sink,
-      struct rte_sampler_ringbuffer_entry *entries,
-      uint32_t max_entries);
+		struct rte_sampler_ringbuffer_entry *entries,
+		uint32_t max_entries);
 
 /**
  * Clear all entries from ring buffer

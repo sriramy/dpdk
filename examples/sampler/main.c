@@ -22,13 +22,13 @@ force_quit = true;
 
 /* Console sink - prints stats to stdout */
 static int
-console_sink_output(const char *source_name,
-    uint16_t source_id,
-    const struct rte_sampler_xstats_name *xstats_names,
-    const uint64_t *ids,
-    const uint64_t *values,
-    unsigned int n,
-    void *user_data)
+		console_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 unsigned int i;
 

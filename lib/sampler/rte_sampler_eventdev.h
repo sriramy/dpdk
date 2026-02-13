@@ -33,8 +33,8 @@ RTE_SAMPLER_EVENTDEV_QUEUE,       /**< Sample queue-level xstats */
  * Eventdev sampler configuration
  */
 struct rte_sampler_eventdev_conf {
-enum rte_sampler_eventdev_mode mode;  /**< Sampling mode */
-uint8_t queue_port_id;                 /**< Queue or port ID (mode dependent) */
+	enum rte_sampler_eventdev_mode mode;  /**< Sampling mode */
+	uint8_t queue_port_id;                 /**< Queue or port ID (mode dependent) */
 };
 
 /**

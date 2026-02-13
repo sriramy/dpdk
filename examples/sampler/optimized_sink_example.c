@@ -31,13 +31,13 @@ force_quit = true;
  * Regular sink - receives names every time (simple but slower)
  */
 static int
-regular_sink_output(const char *source_name,
-    uint16_t source_id,
-    const struct rte_sampler_xstats_name *xstats_names,
-    const uint64_t *ids,
-    const uint64_t *values,
-    unsigned int n,
-    void *user_data)
+		regular_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 unsigned int i;
 
@@ -59,18 +59,18 @@ return 0;
  * Uses on-demand lookup only when needed
  */
 struct optimized_sink_data {
-struct rte_sampler_source *source;  /* Cached source pointer */
-unsigned int sample_count;
+	struct rte_sampler_source *source;  /* Cached source pointer */
+	unsigned int sample_count;
 };
 
 static int
-optimized_sink_output(const char *source_name,
-      uint16_t source_id,
-      const struct rte_sampler_xstats_name *xstats_names,
-      const uint64_t *ids,
-      const uint64_t *values,
-      unsigned int n,
-      void *user_data)
+		optimized_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct optimized_sink_data *data = user_data;
 unsigned int i;

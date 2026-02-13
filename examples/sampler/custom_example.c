@@ -28,10 +28,10 @@ force_quit = true;
  * Store your custom sampler ID here
  */
 struct my_source_data {
-uint64_t custom_sampler_id;
-uint64_t packet_count;
-uint64_t byte_count;
-uint64_t error_count;
+	uint64_t custom_sampler_id;
+	uint64_t packet_count;
+	uint64_t byte_count;
+	uint64_t error_count;
 };
 
 /**
@@ -39,24 +39,24 @@ uint64_t error_count;
  * Store ID mapping or other sink state
  */
 struct my_sink_data {
-FILE *output_file;
+	FILE *output_file;
 /* Mapping from source_id to custom_sampler_id */
-struct {
-uint16_t source_id;
-uint64_t sampler_id;
+	struct {
+	uint16_t source_id;
+	uint64_t sampler_id;
 } id_map[10];
-unsigned int num_mappings;
+	unsigned int num_mappings;
 };
 
 /**
  * Source callback: Get stat names and IDs
  */
 static int
-my_source_xstats_names_get(uint16_t source_id,
-   struct rte_sampler_xstats_name *xstats_names,
-   uint64_t *ids,
-   unsigned int size,
-   void *user_data)
+		my_source_xstats_names_get(uint16_t source_id,
+		struct rte_sampler_xstats_name *xstats_names,
+		uint64_t *ids,
+		unsigned int size,
+		void *user_data)
 {
 struct my_source_data *data = user_data;
 const int num_stats = 3;
@@ -89,11 +89,11 @@ return num_stats;
  * Source callback: Get stat values
  */
 static int
-my_source_xstats_get(uint16_t source_id,
-     const uint64_t *ids,
-     uint64_t *values,
-     unsigned int n,
-     void *user_data)
+		my_source_xstats_get(uint16_t source_id,
+		const uint64_t *ids,
+		uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct my_source_data *data = user_data;
 unsigned int i;
@@ -128,10 +128,10 @@ return n;
  * Source callback: Reset stats (optional)
  */
 static int
-my_source_xstats_reset(uint16_t source_id,
-       const uint64_t *ids,
-       unsigned int n,
-       void *user_data)
+		my_source_xstats_reset(uint16_t source_id,
+		const uint64_t *ids,
+		unsigned int n,
+		void *user_data)
 {
 struct my_source_data *data = user_data;
 
@@ -146,13 +146,13 @@ return 0;
  * Sink callback: Process sampled data
  */
 static int
-my_sink_output(const char *source_name,
-       uint16_t source_id,
-       const struct rte_sampler_xstats_name *xstats_names,
-       const uint64_t *ids,
-       const uint64_t *values,
-       unsigned int n,
-       void *user_data)
+		my_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct my_sink_data *sink_data = user_data;
 uint64_t sampler_id = 0;

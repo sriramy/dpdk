@@ -24,8 +24,8 @@ extern "C" {
  * CTF sink configuration
  */
 struct rte_sampler_sink_ctf_conf {
-const char *trace_dir;     /**< Output trace directory */
-const char *trace_name;    /**< Trace name */
+	const char *trace_dir;     /**< Output trace directory */
+	const char *trace_name;    /**< Trace name */
 };
 
 /**

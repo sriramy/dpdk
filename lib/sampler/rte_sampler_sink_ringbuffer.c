@@ -15,26 +15,26 @@
  * Internal ring buffer entry
  */
 struct ringbuffer_entry {
-uint64_t timestamp;
-char source_name[64];
-uint16_t source_id;
-uint16_t num_stats;
-uint64_t *ids;
-uint64_t *values;
-uint8_t valid;
+	uint64_t timestamp;
+	char source_name[64];
+	uint16_t source_id;
+	uint16_t num_stats;
+	uint64_t *ids;
+	uint64_t *values;
+	uint8_t valid;
 };
 
 /**
  * Ring buffer sink data structure
  */
 struct ringbuffer_sink_data {
-struct ringbuffer_entry *entries;
-uint32_t max_entries;
-uint32_t head;           /* Write position */
-uint32_t tail;           /* Read position */
-uint32_t count;          /* Current number of entries */
-rte_spinlock_t lock;     /* Thread safety */
-struct rte_sampler_sink *sink;  /* Back pointer for API functions */
+	struct ringbuffer_entry *entries;
+	uint32_t max_entries;
+	uint32_t head;           /* Write position */
+	uint32_t tail;           /* Read position */
+	uint32_t count;          /* Current number of entries */
+	rte_spinlock_t lock;     /* Thread safety */
+	struct rte_sampler_sink *sink;  /* Back pointer for API functions */
 };
 
 /* Global registry for finding sink data from sink pointer */
@@ -49,7 +49,7 @@ static rte_spinlock_t registry_lock = RTE_SPINLOCK_INITIALIZER;
  * Register sink in global registry
  */
 static int
-register_sink(struct rte_sampler_sink *sink, struct ringbuffer_sink_data *data)
+		register_sink(struct rte_sampler_sink *sink, struct ringbuffer_sink_data *data)
 {
 unsigned int i;
 
@@ -70,7 +70,7 @@ return -ENOSPC;
  * Unregister sink from global registry
  */
 static void
-unregister_sink(struct rte_sampler_sink *sink)
+		unregister_sink(struct rte_sampler_sink *sink)
 {
 unsigned int i;
 
@@ -89,7 +89,7 @@ rte_spinlock_unlock(&registry_lock);
  * Find sink data from sink pointer
  */
 static struct ringbuffer_sink_data *
-find_sink_data(struct rte_sampler_sink *sink)
+		find_sink_data(struct rte_sampler_sink *sink)
 {
 struct ringbuffer_sink_data *data = NULL;
 unsigned int i;
@@ -109,13 +109,13 @@ return data;
  * Ring buffer sink output callback
  */
 static int
-ringbuffer_sink_output(const char *source_name,
-       uint16_t source_id,
-       const struct rte_sampler_xstats_name *xstats_names,
-       const uint64_t *ids,
-       const uint64_t *values,
-       unsigned int n,
-       void *user_data)
+		ringbuffer_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct ringbuffer_sink_data *data = user_data;
 struct ringbuffer_entry *entry;
@@ -139,8 +139,8 @@ rte_free(entry->values);
 }
 
 /* Allocate and copy data */
-entry->ids = rte_malloc(NULL, sizeof(uint64_t) * n, 0);
-entry->values = rte_malloc(NULL, sizeof(uint64_t) * n, 0);
+		entry->ids = rte_malloc(NULL, sizeof(uint64_t) * n, 0);
+		entry->values = rte_malloc(NULL, sizeof(uint64_t) * n, 0);
 
 if (entry->ids == NULL || entry->values == NULL) {
 rte_free(entry->ids);
@@ -154,8 +154,8 @@ entry->timestamp = rte_get_timer_cycles();
 rte_strscpy(entry->source_name, source_name, sizeof(entry->source_name));
 entry->source_id = source_id;
 entry->num_stats = n;
-memcpy(entry->ids, ids, sizeof(uint64_t) * n);
-memcpy(entry->values, values, sizeof(uint64_t) * n);
+		memcpy(entry->ids, ids, sizeof(uint64_t) * n);
+		memcpy(entry->values, values, sizeof(uint64_t) * n);
 entry->valid = 1;
 
 /* Advance head */
@@ -176,9 +176,9 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_create)
 struct rte_sampler_sink *
-rte_sampler_sink_ringbuffer_create(struct rte_sampler_session *session,
-    const char *name,
-    const struct rte_sampler_sink_ringbuffer_conf *conf)
+		rte_sampler_sink_ringbuffer_create(struct rte_sampler_session *session,
+		const char *name,
+		const struct rte_sampler_sink_ringbuffer_conf *conf)
 {
 struct rte_sampler_sink_ops ops;
 struct ringbuffer_sink_data *data;
@@ -235,7 +235,7 @@ return sink;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_count)
 int
-rte_sampler_sink_ringbuffer_count(struct rte_sampler_sink *sink)
+		rte_sampler_sink_ringbuffer_count(struct rte_sampler_sink *sink)
 {
 struct ringbuffer_sink_data *data;
 int count;
@@ -253,9 +253,9 @@ return count;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_read)
 int
-rte_sampler_sink_ringbuffer_read(struct rte_sampler_sink *sink,
-  struct rte_sampler_ringbuffer_entry *entries,
-  uint32_t max_entries)
+		rte_sampler_sink_ringbuffer_read(struct rte_sampler_sink *sink,
+		struct rte_sampler_ringbuffer_entry *entries,
+		uint32_t max_entries)
 {
 struct ringbuffer_sink_data *data;
 uint32_t i, pos, num_read;
@@ -282,14 +282,14 @@ entries[i].source_id = src->source_id;
 entries[i].num_stats = src->num_stats;
 
 /* Caller needs to allocate arrays */
-entries[i].ids = rte_malloc(NULL, sizeof(uint64_t) * src->num_stats, 0);
-entries[i].values = rte_malloc(NULL, sizeof(uint64_t) * src->num_stats, 0);
+		entries[i].ids = rte_malloc(NULL, sizeof(uint64_t) * src->num_stats, 0);
+		entries[i].values = rte_malloc(NULL, sizeof(uint64_t) * src->num_stats, 0);
 
 if (entries[i].ids && entries[i].values) {
 memcpy(entries[i].ids, src->ids,
-       sizeof(uint64_t) * src->num_stats);
+		sizeof(uint64_t) * src->num_stats);
 memcpy(entries[i].values, src->values,
-       sizeof(uint64_t) * src->num_stats);
+		sizeof(uint64_t) * src->num_stats);
 }
 }
 
@@ -300,7 +300,7 @@ return num_read;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_clear)
 int
-rte_sampler_sink_ringbuffer_clear(struct rte_sampler_sink *sink)
+		rte_sampler_sink_ringbuffer_clear(struct rte_sampler_sink *sink)
 {
 struct ringbuffer_sink_data *data;
 uint32_t i;
@@ -331,7 +331,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_destroy)
 int
-rte_sampler_sink_ringbuffer_destroy(struct rte_sampler_sink *sink)
+		rte_sampler_sink_ringbuffer_destroy(struct rte_sampler_sink *sink)
 {
 struct ringbuffer_sink_data *data;
 uint32_t i;

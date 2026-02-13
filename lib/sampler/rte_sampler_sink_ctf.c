@@ -19,12 +19,12 @@
  * CTF sink user data structure
  */
 struct ctf_sink_data {
-FILE *metadata_fp;
-FILE *stream_fp;
-char trace_dir[256];
-char trace_name[64];
-uint64_t event_count;
-uint8_t metadata_written;
+	FILE *metadata_fp;
+	FILE *stream_fp;
+	char trace_dir[256];
+	char trace_name[64];
+	uint64_t event_count;
+	uint8_t metadata_written;
 };
 
 /**
@@ -42,10 +42,10 @@ return 0;
 fprintf(fp, "/* CTF 1.8 */\n\n");
 
 /* Typealias declarations */
-fprintf(fp, "typealias integer { size = 8; align = 8; signed = false; } := uint8_t;\n");
-fprintf(fp, "typealias integer { size = 16; align = 16; signed = false; } := uint16_t;\n");
-fprintf(fp, "typealias integer { size = 32; align = 32; signed = false; } := uint32_t;\n");
-fprintf(fp, "typealias integer { size = 64; align = 64; signed = false; } := uint64_t;\n\n");
+		fprintf(fp, "typealias integer { size = 8; align = 8; signed = false; } := uint8_t;\n");
+		fprintf(fp, "typealias integer { size = 16; align = 16; signed = false; } := uint16_t;\n");
+		fprintf(fp, "typealias integer { size = 32; align = 32; signed = false; } := uint32_t;\n");
+		fprintf(fp, "typealias integer { size = 64; align = 64; signed = false; } := uint64_t;\n\n");
 
 /* Trace block */
 fprintf(fp, "trace {\n");
@@ -53,8 +53,8 @@ fprintf(fp, "  major = 1;\n");
 fprintf(fp, "  minor = 8;\n");
 fprintf(fp, "  byte_order = le;\n");
 fprintf(fp, "  packet.header := struct {\n");
-fprintf(fp, "    uint32_t magic;\n");
-fprintf(fp, "    uint64_t stream_id;\n");
+		fprintf(fp, "    uint32_t magic;\n");
+		fprintf(fp, "    uint64_t stream_id;\n");
 fprintf(fp, "  };\n");
 fprintf(fp, "};\n\n");
 
@@ -67,13 +67,13 @@ fprintf(fp, "};\n\n");
 /* Stream */
 fprintf(fp, "stream {\n");
 fprintf(fp, "  packet.context := struct {\n");
-fprintf(fp, "    uint64_t timestamp_begin;\n");
-fprintf(fp, "    uint64_t timestamp_end;\n");
-fprintf(fp, "    uint64_t events_discarded;\n");
+		fprintf(fp, "    uint64_t timestamp_begin;\n");
+		fprintf(fp, "    uint64_t timestamp_end;\n");
+		fprintf(fp, "    uint64_t events_discarded;\n");
 fprintf(fp, "  };\n");
 fprintf(fp, "  event.header := struct {\n");
-fprintf(fp, "    uint64_t timestamp;\n");
-fprintf(fp, "    uint32_t id;\n");
+		fprintf(fp, "    uint64_t timestamp;\n");
+		fprintf(fp, "    uint32_t id;\n");
 fprintf(fp, "  };\n");
 fprintf(fp, "};\n\n");
 
@@ -83,10 +83,10 @@ fprintf(fp, "  name = \"sampler_stats\";\n");
 fprintf(fp, "  id = 0;\n");
 fprintf(fp, "  fields := struct {\n");
 fprintf(fp, "    string source_name;\n");
-fprintf(fp, "    uint16_t source_id;\n");
-fprintf(fp, "    uint32_t num_stats;\n");
-fprintf(fp, "    uint64_t stat_id;\n");
-fprintf(fp, "    uint64_t stat_value;\n");
+		fprintf(fp, "    uint16_t source_id;\n");
+		fprintf(fp, "    uint32_t num_stats;\n");
+		fprintf(fp, "    uint64_t stat_id;\n");
+		fprintf(fp, "    uint64_t stat_value;\n");
 fprintf(fp, "  };\n");
 fprintf(fp, "};\n");
 
@@ -116,17 +116,17 @@ timestamp = rte_get_timer_cycles();
 
 for (i = 0; i < n; i++) {
 /* Event header */
-fwrite(&timestamp, sizeof(uint64_t), 1, data->stream_fp);
-fwrite(&event_id, sizeof(uint32_t), 1, data->stream_fp);
+		fwrite(&timestamp, sizeof(uint64_t), 1, data->stream_fp);
+		fwrite(&event_id, sizeof(uint32_t), 1, data->stream_fp);
 
 /* Event payload */
 name_len = strlen(source_name) + 1;
-fwrite(&name_len, sizeof(uint16_t), 1, data->stream_fp);
+		fwrite(&name_len, sizeof(uint16_t), 1, data->stream_fp);
 fwrite(source_name, 1, name_len, data->stream_fp);
-fwrite(&source_id, sizeof(uint16_t), 1, data->stream_fp);
-fwrite(&n, sizeof(uint32_t), 1, data->stream_fp);
-fwrite(&ids[i], sizeof(uint64_t), 1, data->stream_fp);
-fwrite(&values[i], sizeof(uint64_t), 1, data->stream_fp);
+		fwrite(&source_id, sizeof(uint16_t), 1, data->stream_fp);
+		fwrite(&n, sizeof(uint32_t), 1, data->stream_fp);
+		fwrite(&ids[i], sizeof(uint64_t), 1, data->stream_fp);
+		fwrite(&values[i], sizeof(uint64_t), 1, data->stream_fp);
 
 data->event_count++;
 }
@@ -139,7 +139,7 @@ return 0;
  * CTF sink output callback
  */
 static int
-ctf_sink_output(const char *source_name,
+		ctf_sink_output(const char *source_name,
 uint16_t source_id,
 const struct rte_sampler_xstats_name *xstats_names,
 const uint64_t *ids,
@@ -165,9 +165,9 @@ return write_ctf_event(data, source_name, source_id, ids, values, n);
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ctf_create)
 struct rte_sampler_sink *
-rte_sampler_sink_ctf_create(struct rte_sampler_session *session,
-     const char *name,
-     const struct rte_sampler_sink_ctf_conf *conf)
+		rte_sampler_sink_ctf_create(struct rte_sampler_session *session,
+		const char *name,
+		const struct rte_sampler_sink_ctf_conf *conf)
 {
 struct rte_sampler_sink_ops ops;
 struct ctf_sink_data *data;
@@ -230,7 +230,7 @@ return sink;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_ctf_destroy)
 int
-rte_sampler_sink_ctf_destroy(struct rte_sampler_sink *sink)
+		rte_sampler_sink_ctf_destroy(struct rte_sampler_sink *sink)
 {
 if (sink == NULL)
 return -EINVAL;

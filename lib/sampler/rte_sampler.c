@@ -21,50 +21,50 @@
  * Sampler source structure
  */
 struct rte_sampler_source {
-struct rte_sampler_session *session;  /**< Back-pointer to session */
-char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
-uint16_t source_id;
-struct rte_sampler_source_ops ops;
-void *user_data;
-struct rte_sampler_xstats_name xstats_names[MAX_XSTATS_PER_SOURCE];
-uint64_t ids[MAX_XSTATS_PER_SOURCE];
-uint64_t values[MAX_XSTATS_PER_SOURCE];
-unsigned int xstats_count;
+	struct rte_sampler_session *session;  /**< Back-pointer to session */
+	char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
+	uint16_t source_id;
+	struct rte_sampler_source_ops ops;
+	void *user_data;
+	struct rte_sampler_xstats_name xstats_names[MAX_XSTATS_PER_SOURCE];
+	uint64_t ids[MAX_XSTATS_PER_SOURCE];
+	uint64_t values[MAX_XSTATS_PER_SOURCE];
+	unsigned int xstats_count;
 /* Filter support */
-char *filter_patterns[MAX_FILTER_PATTERNS];
-unsigned int num_filter_patterns;
-uint64_t filtered_ids[MAX_XSTATS_PER_SOURCE];
-unsigned int filtered_count;
-uint8_t filter_active;
-uint8_t valid;
+	char *filter_patterns[MAX_FILTER_PATTERNS];
+	unsigned int num_filter_patterns;
+	uint64_t filtered_ids[MAX_XSTATS_PER_SOURCE];
+	unsigned int filtered_count;
+	uint8_t filter_active;
+	uint8_t valid;
 };
 
 /**
  * Sampler sink structure
  */
 struct rte_sampler_sink {
-struct rte_sampler_session *session;  /**< Back-pointer to session */
-char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
-struct rte_sampler_sink_ops ops;
-void *user_data;
-uint8_t valid;
+	struct rte_sampler_session *session;  /**< Back-pointer to session */
+	char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
+	struct rte_sampler_sink_ops ops;
+	void *user_data;
+	uint8_t valid;
 };
 
 /**
  * Sampler session structure
  */
 struct rte_sampler_session {
-char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
-uint64_t sample_interval_ms;
-uint64_t duration_ms;
-uint64_t start_time;
-uint64_t last_sample_time;
-uint8_t active;
-uint8_t valid;
-struct rte_sampler_source sources[MAX_SOURCES_PER_SESSION];
-struct rte_sampler_sink sinks[MAX_SINKS_PER_SESSION];
-unsigned int num_sources;
-unsigned int num_sinks;
+	char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
+	uint64_t sample_interval_ms;
+	uint64_t duration_ms;
+	uint64_t start_time;
+	uint64_t last_sample_time;
+	uint8_t active;
+	uint8_t valid;
+	struct rte_sampler_source sources[MAX_SOURCES_PER_SESSION];
+	struct rte_sampler_sink sinks[MAX_SINKS_PER_SESSION];
+	unsigned int num_sources;
+	unsigned int num_sinks;
 };
 
 /**
@@ -77,12 +77,12 @@ unsigned int num_sessions;
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_create)
 struct rte_sampler_session *
-rte_sampler_session_create(const struct rte_sampler_session_conf *conf)
+		rte_sampler_session_create(const struct rte_sampler_session_conf *conf)
 {
 struct rte_sampler_session *session;
 unsigned int i;
 
-session = rte_zmalloc(NULL, sizeof(struct rte_sampler_session),
+		session = rte_zmalloc(NULL, sizeof(struct rte_sampler_session),
       RTE_CACHE_LINE_SIZE);
 if (session == NULL)
 return NULL;
@@ -125,7 +125,7 @@ return session;
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_free)
 void
-rte_sampler_session_free(struct rte_sampler_session *session)
+		rte_sampler_session_free(struct rte_sampler_session *session)
 {
 unsigned int i;
 
@@ -150,7 +150,7 @@ rte_free(session);
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_start)
 int
-rte_sampler_session_start(struct rte_sampler_session *session)
+		rte_sampler_session_start(struct rte_sampler_session *session)
 {
 if (session == NULL || !session->valid)
 return -EINVAL;
@@ -164,7 +164,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_stop)
 int
-rte_sampler_session_stop(struct rte_sampler_session *session)
+		rte_sampler_session_stop(struct rte_sampler_session *session)
 {
 if (session == NULL || !session->valid)
 return -EINVAL;
@@ -176,7 +176,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_is_active)
 int
-rte_sampler_session_is_active(struct rte_sampler_session *session)
+		rte_sampler_session_is_active(struct rte_sampler_session *session)
 {
 uint64_t current_time, elapsed_ms;
 
@@ -202,7 +202,7 @@ return 1;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_free)
 void
-rte_sampler_source_free(struct rte_sampler_source *source)
+		rte_sampler_source_free(struct rte_sampler_source *source)
 {
 if (source == NULL)
 return;
@@ -213,11 +213,11 @@ source->valid = 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_register)
 struct rte_sampler_source *
-rte_sampler_source_register(struct rte_sampler_session *session,
-     const char *source_name,
-     uint16_t source_id,
-     const struct rte_sampler_source_ops *ops,
-     void *user_data)
+		rte_sampler_source_register(struct rte_sampler_session *session,
+		const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_source_ops *ops,
+		void *user_data)
 {
 struct rte_sampler_source *source;
 unsigned int i;
@@ -256,7 +256,7 @@ return source;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_unregister)
 int
-rte_sampler_source_unregister(struct rte_sampler_source *source)
+		rte_sampler_source_unregister(struct rte_sampler_source *source)
 {
 if (source == NULL || !source->valid)
 return -EINVAL;
@@ -268,7 +268,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_free)
 void
-rte_sampler_sink_free(struct rte_sampler_sink *sink)
+		rte_sampler_sink_free(struct rte_sampler_sink *sink)
 {
 if (sink == NULL)
 return;
@@ -279,10 +279,10 @@ sink->valid = 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_register)
 struct rte_sampler_sink *
-rte_sampler_sink_register(struct rte_sampler_session *session,
-   const char *sink_name,
-   const struct rte_sampler_sink_ops *ops,
-   void *user_data)
+		rte_sampler_sink_register(struct rte_sampler_session *session,
+		const char *sink_name,
+		const struct rte_sampler_sink_ops *ops,
+		void *user_data)
 {
 struct rte_sampler_sink *sink;
 unsigned int i;
@@ -320,7 +320,7 @@ return sink;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_unregister)
 int
-rte_sampler_sink_unregister(struct rte_sampler_sink *sink)
+		rte_sampler_sink_unregister(struct rte_sampler_sink *sink)
 {
 if (sink == NULL || !sink->valid)
 return -EINVAL;
@@ -332,7 +332,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sample)
 int
-rte_sampler_sample(struct rte_sampler_session *session)
+		rte_sampler_sample(struct rte_sampler_session *session)
 {
 unsigned int i, j;
 int ret;
@@ -458,10 +458,10 @@ return polled;
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_names_get)
 int
-rte_sampler_xstats_names_get(struct rte_sampler_session *session,
-      struct rte_sampler_source *source,
-      struct rte_sampler_xstats_name *xstats_names,
-      unsigned int size)
+		rte_sampler_xstats_names_get(struct rte_sampler_session *session,
+		struct rte_sampler_source *source,
+		struct rte_sampler_xstats_name *xstats_names,
+		unsigned int size)
 {
 unsigned int total = 0;
 unsigned int i, j;
@@ -506,11 +506,11 @@ return total;
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_get)
 int
-rte_sampler_xstats_get(struct rte_sampler_session *session,
-       struct rte_sampler_source *source,
-       const uint64_t *ids,
-       uint64_t *values,
-       unsigned int n)
+		rte_sampler_xstats_get(struct rte_sampler_session *session,
+		struct rte_sampler_source *source,
+		const uint64_t *ids,
+		uint64_t *values,
+		unsigned int n)
 {
 unsigned int total = 0;
 unsigned int i, j;
@@ -563,10 +563,10 @@ return total;
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_reset)
 int
-rte_sampler_xstats_reset(struct rte_sampler_session *session,
-  struct rte_sampler_source *source,
-  const uint64_t *ids,
-  unsigned int n)
+		rte_sampler_xstats_reset(struct rte_sampler_session *session,
+		struct rte_sampler_source *source,
+		const uint64_t *ids,
+		unsigned int n)
 {
 unsigned int i;
 int ret;
@@ -620,9 +620,9 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_get_xstats_name)
 int
-rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
-    uint64_t id,
-    struct rte_sampler_xstats_name *name)
+		rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
+		uint64_t id,
+		struct rte_sampler_xstats_name *name)
 {
 unsigned int i;
 
@@ -645,7 +645,7 @@ return -ENOENT;
  * Supports * (match any) and ? (match one character)
  */
 static int
-match_pattern(const char *pattern, const char *str)
+		match_pattern(const char *pattern, const char *str)
 {
 while (*pattern && *str) {
 if (*pattern == '*') {
@@ -683,7 +683,7 @@ return (*pattern == '\0' && *str == '\0');
  * Check if a stat name matches any filter pattern
  */
 static int
-matches_filter(struct rte_sampler_source *source, const char *name)
+		matches_filter(struct rte_sampler_source *source, const char *name)
 {
 unsigned int i;
 
@@ -702,7 +702,7 @@ return 0;
  * Apply filter to cached xstats
  */
 static void
-apply_filter(struct rte_sampler_source *source)
+		apply_filter(struct rte_sampler_source *source)
 {
 unsigned int i, j;
 
@@ -724,9 +724,9 @@ source->filtered_count = j;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_set_filter)
 int
-rte_sampler_source_set_filter(struct rte_sampler_source *source,
-       const char **patterns,
-       unsigned int num_patterns)
+		rte_sampler_source_set_filter(struct rte_sampler_source *source,
+		const char **patterns,
+		unsigned int num_patterns)
 {
 unsigned int i;
 
@@ -768,7 +768,7 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_clear_filter)
 int
-rte_sampler_source_clear_filter(struct rte_sampler_source *source)
+		rte_sampler_source_clear_filter(struct rte_sampler_source *source)
 {
 unsigned int i;
 
@@ -794,9 +794,9 @@ return 0;
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_get_filter)
 int
-rte_sampler_source_get_filter(struct rte_sampler_source *source,
+		rte_sampler_source_get_filter(struct rte_sampler_source *source,
        char **patterns,
-       unsigned int max_patterns)
+		unsigned int max_patterns)
 {
 unsigned int i, count;
 

@@ -31,13 +31,13 @@ force_quit = true;
  * Console sink for displaying filtered stats
  */
 static int
-console_sink_output(const char *source_name,
-    uint16_t source_id,
-    const struct rte_sampler_xstats_name *xstats_names,
-    const uint64_t *ids,
-    const uint64_t *values,
-    unsigned int n,
-    void *user_data)
+		console_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 const char *filter_desc = (const char *)user_data;
 unsigned int i;

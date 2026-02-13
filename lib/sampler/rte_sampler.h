@@ -45,7 +45,7 @@ extern "C" {
  * Sampler xstats name structure
  */
 struct rte_sampler_xstats_name {
-char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
+	char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
 };
 
 /**
@@ -70,19 +70,19 @@ struct rte_sampler_session;
  * Session configuration
  */
 struct rte_sampler_session_conf {
-uint64_t sample_interval_ms;  /**< Sampling interval in milliseconds (0 = manual) */
-uint64_t duration_ms;         /**< Session duration in milliseconds (0 = infinite) */
-const char *name;             /**< Optional session name for identification */
+	uint64_t sample_interval_ms;  /**< Sampling interval in milliseconds (0 = manual) */
+	uint64_t duration_ms;         /**< Session duration in milliseconds (0 = infinite) */
+	const char *name;             /**< Optional session name for identification */
 };
 
 /**
  * Sample data structure
  */
 struct rte_sampler_sample {
-uint64_t timestamp;                             /**< Sample timestamp */
-char name[RTE_SAMPLER_XSTATS_NAME_SIZE];        /**< Stat name */
-uint64_t id;                                    /**< Stat ID */
-uint64_t value;                                 /**< Stat value */
+	uint64_t timestamp;                             /**< Sample timestamp */
+	char name[RTE_SAMPLER_XSTATS_NAME_SIZE];        /**< Stat name */
+	uint64_t id;                                    /**< Stat ID */
+	uint64_t value;                                 /**< Stat value */
 };
 
 /**
@@ -143,9 +143,9 @@ void *user_data);
  * Sampler source operations structure
  */
 struct rte_sampler_source_ops {
-rte_sampler_source_start_t start;      /**< Start callback */
-rte_sampler_source_collect_t collect;  /**< Collect callback */
-rte_sampler_source_stop_t stop;        /**< Stop callback */
+	rte_sampler_source_start_t start;      /**< Start callback */
+	rte_sampler_source_collect_t collect;  /**< Collect callback */
+	rte_sampler_source_stop_t stop;        /**< Stop callback */
 };
 
 /**
@@ -226,12 +226,12 @@ typedef int (*rte_sampler_sink_stop_t)(void *user_data);
  * Sampler sink operations structure
  */
 struct rte_sampler_sink_ops {
-rte_sampler_sink_start_t start;                 /**< Start callback */
-rte_sampler_sink_report_begin_t begin;          /**< Report begin callback */
-rte_sampler_sink_report_append_t append;        /**< Append sample callback */
-rte_sampler_sink_report_end_t end;              /**< Report end callback */
-rte_sampler_sink_stop_t stop;                   /**< Stop callback */
-uint32_t flags;                                 /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
+	rte_sampler_sink_start_t start;                 /**< Start callback */
+	rte_sampler_sink_report_begin_t begin;          /**< Report begin callback */
+	rte_sampler_sink_report_append_t append;        /**< Append sample callback */
+	rte_sampler_sink_report_end_t end;              /**< Report end callback */
+	rte_sampler_sink_stop_t stop;                   /**< Stop callback */
+	uint32_t flags;                                 /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
 };
 
 /**
@@ -416,9 +416,9 @@ int rte_sampler_poll(void);
  *   Number of stats available or negative on error
  */
 int rte_sampler_xstats_names_get(struct rte_sampler_session *session,
-  struct rte_sampler_source *source,
-  struct rte_sampler_xstats_name *xstats_names,
-  unsigned int size);
+		struct rte_sampler_source *source,
+		struct rte_sampler_xstats_name *xstats_names,
+		unsigned int size);
 
 /**
  * Get xstats values from session
@@ -437,10 +437,10 @@ int rte_sampler_xstats_names_get(struct rte_sampler_session *session,
  *   Number of stats retrieved or negative on error
  */
 int rte_sampler_xstats_get(struct rte_sampler_session *session,
-    struct rte_sampler_source *source,
-    const uint64_t *ids,
-    uint64_t *values,
-    unsigned int n);
+		struct rte_sampler_source *source,
+		const uint64_t *ids,
+		uint64_t *values,
+		unsigned int n);
 
 /**
  * Reset xstats in session
@@ -457,9 +457,9 @@ int rte_sampler_xstats_get(struct rte_sampler_session *session,
  *   Zero on success, negative on error
  */
 int rte_sampler_xstats_reset(struct rte_sampler_session *session,
-      struct rte_sampler_source *source,
-      const uint64_t *ids,
-      unsigned int n);
+		struct rte_sampler_source *source,
+		const uint64_t *ids,
+		unsigned int n);
 
 /**
  * Get xstats name for a specific source

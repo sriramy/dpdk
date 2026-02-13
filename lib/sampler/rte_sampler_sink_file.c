@@ -18,19 +18,19 @@
  * File sink user data structure
  */
 struct file_sink_data {
-FILE *fp;
-enum rte_sampler_sink_file_format format;
-uint64_t sample_count;
-uint8_t header_written;
+	FILE *fp;
+	enum rte_sampler_sink_file_format format;
+	uint64_t sample_count;
+	uint8_t header_written;
 };
 
 /**
  * Write CSV header
  */
 static void
-write_csv_header(FILE *fp, const char *source_name,
- const struct rte_sampler_xstats_name *xstats_names,
- unsigned int n)
+		write_csv_header(FILE *fp, const char *source_name,
+		const struct rte_sampler_xstats_name *xstats_names,
+		unsigned int n)
 {
 unsigned int i;
 
@@ -47,11 +47,11 @@ fflush(fp);
  */
 static int
 write_csv_output(struct file_sink_data *data,
- const char *source_name,
- uint16_t source_id,
- const struct rte_sampler_xstats_name *xstats_names,
- const uint64_t *values,
- unsigned int n)
+		const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *values,
+		unsigned int n)
 {
 unsigned int i;
 time_t now;
@@ -85,12 +85,12 @@ return 0;
  */
 static int
 write_json_output(struct file_sink_data *data,
-  const char *source_name,
-  uint16_t source_id,
-  const struct rte_sampler_xstats_name *xstats_names,
-  const uint64_t *ids,
-  const uint64_t *values,
-  unsigned int n)
+		const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n)
 {
 unsigned int i;
 time_t now;
@@ -127,12 +127,12 @@ return 0;
  */
 static int
 write_text_output(struct file_sink_data *data,
-  const char *source_name,
-  uint16_t source_id,
-  const struct rte_sampler_xstats_name *xstats_names,
-  const uint64_t *ids,
-  const uint64_t *values,
-  unsigned int n)
+		const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n)
 {
 unsigned int i;
 time_t now;
@@ -167,13 +167,13 @@ return 0;
  * File sink output callback
  */
 static int
-file_sink_output(const char *source_name,
- uint16_t source_id,
- const struct rte_sampler_xstats_name *xstats_names,
- const uint64_t *ids,
- const uint64_t *values,
- unsigned int n,
- void *user_data)
+		file_sink_output(const char *source_name,
+		uint16_t source_id,
+		const struct rte_sampler_xstats_name *xstats_names,
+		const uint64_t *ids,
+		const uint64_t *values,
+		unsigned int n,
+		void *user_data)
 {
 struct file_sink_data *data = user_data;
 int ret = 0;
@@ -205,9 +205,9 @@ return ret;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_file_create)
 struct rte_sampler_sink *
-rte_sampler_sink_file_create(struct rte_sampler_session *session,
-      const char *name,
-      const struct rte_sampler_sink_file_conf *conf)
+		rte_sampler_sink_file_create(struct rte_sampler_session *session,
+		const char *name,
+		const struct rte_sampler_sink_file_conf *conf)
 {
 struct rte_sampler_sink_ops ops;
 struct file_sink_data *data;
@@ -257,7 +257,7 @@ return sink;
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_file_destroy)
 int
-rte_sampler_sink_file_destroy(struct rte_sampler_sink *sink)
+		rte_sampler_sink_file_destroy(struct rte_sampler_sink *sink)
 {
 /* Note: This would need access to sink internals to get user_data
  * For now, cleanup is handled by sink_unregister */
