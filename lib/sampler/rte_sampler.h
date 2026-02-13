@@ -76,116 +76,162 @@ const char *name;             /**< Optional session name for identification */
 };
 
 /**
- * Callback function type for source xstats_names_get
- *
- * @param source_id
- *   Source-specific identifier (e.g., device id)
- * @param xstats_names
- *   Array to be filled with stat names. Can be NULL to query size.
- * @param ids
- *   Array to be filled with stat IDs. Can be NULL to query size.
- * @param size
- *   Size of the arrays
- * @param user_data
- *   User-provided data passed during source registration
- * @return
- *   Number of stats available or negative on error
+ * Sample data structure
  */
-typedef int (*rte_sampler_source_xstats_names_get_t)(
-uint16_t source_id,
-struct rte_sampler_xstats_name *xstats_names,
-uint64_t *ids,
-unsigned int size,
-void *user_data);
+struct rte_sampler_sample {
+uint64_t timestamp;                             /**< Sample timestamp */
+char name[RTE_SAMPLER_XSTATS_NAME_SIZE];        /**< Stat name */
+uint64_t id;                                    /**< Stat ID */
+uint64_t value;                                 /**< Stat value */
+};
 
 /**
- * Callback function type for source xstats_get
+ * Callback function type for source start
+ *
+ * Called when sampling session starts. Source should initialize.
  *
  * @param source_id
  *   Source-specific identifier (e.g., device id)
- * @param ids
- *   Array of stat IDs to retrieve
- * @param values
- *   Array to be filled with stat values
- * @param n
- *   Number of stats to retrieve
- * @param user_data
- *   User-provided data passed during source registration
- * @return
- *   Number of stats retrieved or negative on error
- */
-typedef int (*rte_sampler_source_xstats_get_t)(
-uint16_t source_id,
-const uint64_t *ids,
-uint64_t *values,
-unsigned int n,
-void *user_data);
-
-/**
- * Callback function type for source xstats_reset
- *
- * @param source_id
- *   Source-specific identifier (e.g., device id)
- * @param ids
- *   Array of stat IDs to reset. NULL means reset all.
- * @param n
- *   Number of stats to reset
  * @param user_data
  *   User-provided data passed during source registration
  * @return
  *   Zero on success or negative on error
  */
-typedef int (*rte_sampler_source_xstats_reset_t)(
+typedef int (*rte_sampler_source_start_t)(
 uint16_t source_id,
-const uint64_t *ids,
-unsigned int n,
+void *user_data);
+
+/**
+ * Callback function type for source collect
+ *
+ * Called to collect samples from the source. Source should fill the samples array.
+ *
+ * @param source_id
+ *   Source-specific identifier (e.g., device id)
+ * @param samples
+ *   Array to be filled with collected samples
+ * @param max_samples
+ *   Maximum number of samples that can be stored
+ * @param user_data
+ *   User-provided data passed during source registration
+ * @return
+ *   Number of samples collected or negative on error
+ */
+typedef int (*rte_sampler_source_collect_t)(
+uint16_t source_id,
+struct rte_sampler_sample *samples,
+unsigned int max_samples,
+void *user_data);
+
+/**
+ * Callback function type for source stop
+ *
+ * Called when sampling session stops. Source should cleanup.
+ *
+ * @param source_id
+ *   Source-specific identifier (e.g., device id)
+ * @param user_data
+ *   User-provided data passed during source registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_source_stop_t)(
+uint16_t source_id,
 void *user_data);
 
 /**
  * Sampler source operations structure
  */
 struct rte_sampler_source_ops {
-rte_sampler_source_xstats_names_get_t xstats_names_get;
-rte_sampler_source_xstats_get_t xstats_get;
-rte_sampler_source_xstats_reset_t xstats_reset;
+rte_sampler_source_start_t start;      /**< Start callback */
+rte_sampler_source_collect_t collect;  /**< Collect callback */
+rte_sampler_source_stop_t stop;        /**< Stop callback */
 };
 
 /**
- * Callback function type for sink output
+ * Callback function type for sink start
  *
- * @param source_name
- *   Name of the source
- * @param source_id
- *   Source identifier
- * @param xstats_names
- *   Array of stat names. Can be NULL if sink registered with RTE_SAMPLER_SINK_F_NO_NAMES flag.
- *   Sinks should check for NULL and use rte_sampler_source_get_xstats_name() if names are needed.
- * @param ids
- *   Array of stat IDs (always provided)
- * @param values
- *   Array of stat values (always provided)
- * @param n
- *   Number of stats
+ * Called when sink is activated. Sink should initialize.
+ *
  * @param user_data
  *   User-provided data passed during sink registration
  * @return
  *   Zero on success or negative on error
  */
-typedef int (*rte_sampler_sink_output_t)(
+typedef int (*rte_sampler_sink_start_t)(void *user_data);
+
+/**
+ * Callback function type for sink report begin
+ *
+ * Called at the beginning of a sampling report. Sink can prepare for batch.
+ *
+ * @param source_name
+ *   Name of the source
+ * @param source_id
+ *   Source identifier
+ * @param num_samples
+ *   Number of samples in this report
+ * @param user_data
+ *   User-provided data passed during sink registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_sink_report_begin_t)(
 const char *source_name,
 uint16_t source_id,
-const struct rte_sampler_xstats_name *xstats_names,
-const uint64_t *ids,
-const uint64_t *values,
-unsigned int n,
+unsigned int num_samples,
 void *user_data);
+
+/**
+ * Callback function type for sink report append
+ *
+ * Called to append a sample to the current report.
+ *
+ * @param sample
+ *   Sample data to append
+ * @param user_data
+ *   User-provided data passed during sink registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_sink_report_append_t)(
+const struct rte_sampler_sample *sample,
+void *user_data);
+
+/**
+ * Callback function type for sink report end
+ *
+ * Called at the end of a sampling report. Sink should finalize batch.
+ *
+ * @param user_data
+ *   User-provided data passed during sink registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_sink_report_end_t)(void *user_data);
+
+/**
+ * Callback function type for sink stop
+ *
+ * Called when sink is deactivated. Sink should cleanup.
+ *
+ * @param user_data
+ *   User-provided data passed during sink registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_sink_stop_t)(void *user_data);
 
 /**
  * Sampler sink operations structure
  */
 struct rte_sampler_sink_ops {
-rte_sampler_sink_output_t output;
-uint32_t flags;  /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
+rte_sampler_sink_start_t start;                 /**< Start callback */
+rte_sampler_sink_report_begin_t begin;          /**< Report begin callback */
+rte_sampler_sink_report_append_t append;        /**< Append sample callback */
+rte_sampler_sink_report_end_t end;              /**< Report end callback */
+rte_sampler_sink_stop_t stop;                   /**< Stop callback */
+uint32_t flags;                                 /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
 };
 
 /**
