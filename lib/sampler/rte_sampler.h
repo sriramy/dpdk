@@ -36,6 +36,12 @@ extern "C" {
 #define RTE_SAMPLER_XSTATS_NAME_SIZE 128
 
 /**
+ * Sink flags
+ */
+#define RTE_SAMPLER_SINK_F_NO_NAMES  0x0001
+/**< Don't pass stat names to sink (optimization to avoid large data transfer) */
+
+/**
  * Sampler xstats name structure
  */
 struct rte_sampler_xstats_name {
@@ -152,11 +158,12 @@ rte_sampler_source_xstats_reset_t xstats_reset;
  * @param source_id
  *   Source identifier
  * @param xstats_names
- *   Array of stat names
+ *   Array of stat names. Can be NULL if sink registered with RTE_SAMPLER_SINK_F_NO_NAMES flag.
+ *   Sinks should check for NULL and use rte_sampler_source_get_xstats_name() if names are needed.
  * @param ids
- *   Array of stat IDs
+ *   Array of stat IDs (always provided)
  * @param values
- *   Array of stat values
+ *   Array of stat values (always provided)
  * @param n
  *   Number of stats
  * @param user_data
@@ -178,6 +185,7 @@ void *user_data);
  */
 struct rte_sampler_sink_ops {
 rte_sampler_sink_output_t output;
+uint32_t flags;  /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
 };
 
 /**
@@ -406,6 +414,25 @@ int rte_sampler_xstats_reset(struct rte_sampler_session *session,
       struct rte_sampler_source *source,
       const uint64_t *ids,
       unsigned int n);
+
+/**
+ * Get xstats name for a specific source
+ *
+ * Helper function for sinks that use RTE_SAMPLER_SINK_F_NO_NAMES flag.
+ * Allows on-demand lookup of stat names by ID.
+ *
+ * @param source
+ *   Pointer to source structure
+ * @param id
+ *   Stat ID to look up
+ * @param name
+ *   Pointer to buffer to store the name
+ * @return
+ *   Zero on success, negative on error (-ENOENT if ID not found)
+ */
+int rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
+					uint64_t id,
+					struct rte_sampler_xstats_name *name);
 
 #ifdef __cplusplus
 }

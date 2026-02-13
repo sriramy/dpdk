@@ -378,14 +378,21 @@ continue;
 /* Send to all sinks */
 for (j = 0; j < session->num_sinks; j++) {
 struct rte_sampler_sink *sink = &session->sinks[j];
+const struct rte_sampler_xstats_name *names_to_pass;
 
 if (!sink->valid)
 continue;
 
+/* Optimization: don't pass names if sink doesn't want them */
+if (sink->ops.flags & RTE_SAMPLER_SINK_F_NO_NAMES)
+names_to_pass = NULL;
+else
+names_to_pass = source->xstats_names;
+
 ret = sink->ops.output(
 source->name,
 source->source_id,
-source->xstats_names,
+names_to_pass,
 source->ids,
 source->values,
 source->xstats_count,
@@ -599,4 +606,26 @@ memset(src->values, 0, sizeof(src->values));
 }
 
 return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_get_xstats_name)
+int
+rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
+    uint64_t id,
+    struct rte_sampler_xstats_name *name)
+{
+unsigned int i;
+
+if (source == NULL || !source->valid || name == NULL)
+return -EINVAL;
+
+/* Search for the ID in the source's cached stats */
+for (i = 0; i < source->xstats_count; i++) {
+if (source->ids[i] == id) {
+*name = source->xstats_names[i];
+return 0;
+}
+}
+
+return -ENOENT;
 }
