@@ -156,23 +156,23 @@ return rte_event_dev_xstats_reset((uint8_t)source_id,
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_eventdev_source_register)
-int
-rte_sampler_eventdev_source_register(struct rte_sampler *sampler,
+struct rte_sampler_source *
+rte_sampler_eventdev_source_register(struct rte_sampler_session *session,
       uint8_t dev_id,
       const struct rte_sampler_eventdev_conf *conf)
 {
 struct rte_sampler_source_ops ops;
 struct eventdev_source_data *data;
 char source_name[RTE_SAMPLER_XSTATS_NAME_SIZE];
-int ret;
+struct rte_sampler_source *source;
 
-if (sampler == NULL || conf == NULL)
-return -EINVAL;
+if (session == NULL || conf == NULL)
+return NULL;
 
 /* Allocate user data */
 data = rte_malloc(NULL, sizeof(*data), 0);
 if (data == NULL)
-return -ENOMEM;
+return NULL;
 
 data->mode = conf->mode;
 data->queue_port_id = conf->queue_port_id;
@@ -186,12 +186,12 @@ ops.xstats_reset = eventdev_xstats_reset;
 snprintf(source_name, sizeof(source_name), "eventdev_%u", dev_id);
 
 /* Register source */
-ret = rte_sampler_source_register(sampler, source_name, dev_id,
+source = rte_sampler_source_register(session, source_name, dev_id,
    &ops, data);
-if (ret < 0) {
+if (source == NULL) {
 rte_free(data);
-return ret;
+return NULL;
 }
 
-return ret;
+return source;
 }

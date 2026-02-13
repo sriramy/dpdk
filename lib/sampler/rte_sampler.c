@@ -8,16 +8,19 @@
 #include <rte_malloc.h>
 #include <rte_log.h>
 #include <rte_string_fns.h>
+#include <rte_cycles.h>
 #include <rte_sampler.h>
 
-#define MAX_SOURCES 64
-#define MAX_SINKS 16
+#define MAX_SESSIONS 32
+#define MAX_SOURCES_PER_SESSION 64
+#define MAX_SINKS_PER_SESSION 16
 #define MAX_XSTATS_PER_SOURCE 256
 
 /**
- * Internal source structure
+ * Sampler source structure
  */
-struct sampler_source {
+struct rte_sampler_source {
+struct rte_sampler_session *session;  /**< Back-pointer to session */
 char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
 uint16_t source_id;
 struct rte_sampler_source_ops ops;
@@ -30,9 +33,10 @@ uint8_t valid;
 };
 
 /**
- * Internal sink structure
+ * Sampler sink structure
  */
-struct sampler_sink {
+struct rte_sampler_sink {
+struct rte_sampler_session *session;  /**< Back-pointer to session */
 char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
 struct rte_sampler_sink_ops ops;
 void *user_data;
@@ -40,163 +44,298 @@ uint8_t valid;
 };
 
 /**
- * Sampler context structure
+ * Sampler session structure
  */
-struct rte_sampler {
-struct sampler_source sources[MAX_SOURCES];
-struct sampler_sink sinks[MAX_SINKS];
+struct rte_sampler_session {
+char name[RTE_SAMPLER_XSTATS_NAME_SIZE];
+uint64_t sample_interval_ms;
+uint64_t duration_ms;
+uint64_t start_time;
+uint64_t last_sample_time;
+uint8_t active;
+uint8_t valid;
+struct rte_sampler_source sources[MAX_SOURCES_PER_SESSION];
+struct rte_sampler_sink sinks[MAX_SINKS_PER_SESSION];
 unsigned int num_sources;
 unsigned int num_sinks;
 };
 
-RTE_EXPORT_SYMBOL(rte_sampler_create)
-struct rte_sampler *
-rte_sampler_create(void)
-{
-struct rte_sampler *sampler;
+/**
+ * Global session registry
+ */
+static struct {
+struct rte_sampler_session *sessions[MAX_SESSIONS];
+unsigned int num_sessions;
+} sampler_global;
 
-sampler = rte_zmalloc(NULL, sizeof(struct rte_sampler),
+RTE_EXPORT_SYMBOL(rte_sampler_session_create)
+struct rte_sampler_session *
+rte_sampler_session_create(const struct rte_sampler_session_conf *conf)
+{
+struct rte_sampler_session *session;
+unsigned int i;
+
+session = rte_zmalloc(NULL, sizeof(struct rte_sampler_session),
       RTE_CACHE_LINE_SIZE);
-if (sampler == NULL)
+if (session == NULL)
 return NULL;
 
-return sampler;
+/* Set configuration */
+if (conf != NULL) {
+session->sample_interval_ms = conf->sample_interval_ms;
+session->duration_ms = conf->duration_ms;
+if (conf->name != NULL)
+rte_strscpy(session->name, conf->name, sizeof(session->name));
+else
+snprintf(session->name, sizeof(session->name), "session_%p", session);
+} else {
+/* Default configuration: manual sampling, infinite duration */
+session->sample_interval_ms = 0;
+session->duration_ms = 0;
+snprintf(session->name, sizeof(session->name), "session_%p", session);
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_free)
+session->valid = 1;
+
+/* Register session globally */
+for (i = 0; i < MAX_SESSIONS; i++) {
+if (sampler_global.sessions[i] == NULL) {
+sampler_global.sessions[i] = session;
+if (i >= sampler_global.num_sessions)
+sampler_global.num_sessions = i + 1;
+break;
+}
+}
+
+if (i >= MAX_SESSIONS) {
+RTE_LOG(WARNING, USER1,
+"Maximum sessions (%d) reached, session will not be polled automatically\n",
+MAX_SESSIONS);
+}
+
+return session;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_session_free)
 void
-rte_sampler_free(struct rte_sampler *sampler)
+rte_sampler_session_free(struct rte_sampler_session *session)
 {
-rte_free(sampler);
+unsigned int i;
+
+if (session == NULL)
+return;
+
+/* Stop session if active */
+if (session->active)
+rte_sampler_session_stop(session);
+
+/* Unregister from global registry */
+for (i = 0; i < sampler_global.num_sessions; i++) {
+if (sampler_global.sessions[i] == session) {
+sampler_global.sessions[i] = NULL;
+break;
+}
+}
+
+session->valid = 0;
+rte_free(session);
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_session_start)
+int
+rte_sampler_session_start(struct rte_sampler_session *session)
+{
+if (session == NULL || !session->valid)
+return -EINVAL;
+
+session->active = 1;
+session->start_time = rte_get_timer_cycles();
+session->last_sample_time = session->start_time;
+
+return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_session_stop)
+int
+rte_sampler_session_stop(struct rte_sampler_session *session)
+{
+if (session == NULL || !session->valid)
+return -EINVAL;
+
+session->active = 0;
+
+return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_session_is_active)
+int
+rte_sampler_session_is_active(struct rte_sampler_session *session)
+{
+uint64_t current_time, elapsed_ms;
+
+if (session == NULL || !session->valid)
+return -EINVAL;
+
+if (!session->active)
+return 0;
+
+/* Check if duration has expired */
+if (session->duration_ms > 0) {
+current_time = rte_get_timer_cycles();
+elapsed_ms = (current_time - session->start_time) * 1000 /
+     rte_get_timer_hz();
+if (elapsed_ms >= session->duration_ms) {
+session->active = 0;
+return 0;
+}
+}
+
+return 1;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_free)
+void
+rte_sampler_source_free(struct rte_sampler_source *source)
+{
+if (source == NULL)
+return;
+
+source->valid = 0;
+/* Note: source is part of session structure, not separately allocated */
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_register)
-int
-rte_sampler_source_register(struct rte_sampler *sampler,
+struct rte_sampler_source *
+rte_sampler_source_register(struct rte_sampler_session *session,
      const char *source_name,
      uint16_t source_id,
      const struct rte_sampler_source_ops *ops,
      void *user_data)
 {
-struct sampler_source *source;
+struct rte_sampler_source *source;
 unsigned int i;
 
-if (sampler == NULL || source_name == NULL || ops == NULL)
-return -EINVAL;
+if (session == NULL || !session->valid ||
+    source_name == NULL || ops == NULL)
+return NULL;
 
 if (ops->xstats_names_get == NULL || ops->xstats_get == NULL)
-return -EINVAL;
+return NULL;
 
 /* Find free slot */
-for (i = 0; i < MAX_SOURCES; i++) {
-if (!sampler->sources[i].valid)
+for (i = 0; i < MAX_SOURCES_PER_SESSION; i++) {
+if (!session->sources[i].valid)
 break;
 }
 
-if (i >= MAX_SOURCES)
-return -ENOSPC;
+if (i >= MAX_SOURCES_PER_SESSION)
+return NULL;
 
-source = &sampler->sources[i];
+source = &session->sources[i];
 memset(source, 0, sizeof(*source));
 
+source->session = session;
 rte_strscpy(source->name, source_name, sizeof(source->name));
 source->source_id = source_id;
 source->ops = *ops;
 source->user_data = user_data;
 source->valid = 1;
 
-if (i >= sampler->num_sources)
-sampler->num_sources = i + 1;
+if (i >= session->num_sources)
+session->num_sources = i + 1;
 
-return i;
+return source;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_unregister)
 int
-rte_sampler_source_unregister(struct rte_sampler *sampler,
-       int source_handle)
+rte_sampler_source_unregister(struct rte_sampler_source *source)
 {
-if (sampler == NULL || source_handle < 0 || 
-    (unsigned int)source_handle >= MAX_SOURCES)
+if (source == NULL || !source->valid)
 return -EINVAL;
 
-if (!sampler->sources[source_handle].valid)
-return -ENOENT;
-
-sampler->sources[source_handle].valid = 0;
+source->valid = 0;
 
 return 0;
 }
 
+RTE_EXPORT_SYMBOL(rte_sampler_sink_free)
+void
+rte_sampler_sink_free(struct rte_sampler_sink *sink)
+{
+if (sink == NULL)
+return;
+
+sink->valid = 0;
+/* Note: sink is part of session structure, not separately allocated */
+}
+
 RTE_EXPORT_SYMBOL(rte_sampler_sink_register)
-int
-rte_sampler_sink_register(struct rte_sampler *sampler,
+struct rte_sampler_sink *
+rte_sampler_sink_register(struct rte_sampler_session *session,
    const char *sink_name,
    const struct rte_sampler_sink_ops *ops,
    void *user_data)
 {
-struct sampler_sink *sink;
+struct rte_sampler_sink *sink;
 unsigned int i;
 
-if (sampler == NULL || sink_name == NULL || ops == NULL)
-return -EINVAL;
+if (session == NULL || !session->valid ||
+    sink_name == NULL || ops == NULL)
+return NULL;
 
 if (ops->output == NULL)
-return -EINVAL;
+return NULL;
 
 /* Find free slot */
-for (i = 0; i < MAX_SINKS; i++) {
-if (!sampler->sinks[i].valid)
+for (i = 0; i < MAX_SINKS_PER_SESSION; i++) {
+if (!session->sinks[i].valid)
 break;
 }
 
-if (i >= MAX_SINKS)
-return -ENOSPC;
+if (i >= MAX_SINKS_PER_SESSION)
+return NULL;
 
-sink = &sampler->sinks[i];
+sink = &session->sinks[i];
 memset(sink, 0, sizeof(*sink));
 
+sink->session = session;
 rte_strscpy(sink->name, sink_name, sizeof(sink->name));
 sink->ops = *ops;
 sink->user_data = user_data;
 sink->valid = 1;
 
-if (i >= sampler->num_sinks)
-sampler->num_sinks = i + 1;
+if (i >= session->num_sinks)
+session->num_sinks = i + 1;
 
-return i;
+return sink;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_unregister)
 int
-rte_sampler_sink_unregister(struct rte_sampler *sampler,
-     int sink_handle)
+rte_sampler_sink_unregister(struct rte_sampler_sink *sink)
 {
-if (sampler == NULL || sink_handle < 0 || 
-    (unsigned int)sink_handle >= MAX_SINKS)
+if (sink == NULL || !sink->valid)
 return -EINVAL;
 
-if (!sampler->sinks[sink_handle].valid)
-return -ENOENT;
-
-sampler->sinks[sink_handle].valid = 0;
+sink->valid = 0;
 
 return 0;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_sample)
 int
-rte_sampler_sample(struct rte_sampler *sampler)
+rte_sampler_sample(struct rte_sampler_session *session)
 {
 unsigned int i, j;
 int ret;
 
-if (sampler == NULL)
+if (session == NULL || !session->valid)
 return -EINVAL;
 
 /* Sample from all sources */
-for (i = 0; i < sampler->num_sources; i++) {
-struct sampler_source *source = &sampler->sources[i];
+for (i = 0; i < session->num_sources; i++) {
+struct rte_sampler_source *source = &session->sources[i];
 
 if (!source->valid)
 continue;
@@ -237,8 +376,8 @@ continue;
 }
 
 /* Send to all sinks */
-for (j = 0; j < sampler->num_sinks; j++) {
-struct sampler_sink *sink = &sampler->sinks[j];
+for (j = 0; j < session->num_sinks; j++) {
+struct rte_sampler_sink *sink = &session->sinks[j];
 
 if (!sink->valid)
 continue;
@@ -258,31 +397,65 @@ continue;
 }
 }
 
+/* Update last sample time */
+session->last_sample_time = rte_get_timer_cycles();
+
 return 0;
+}
+
+RTE_EXPORT_SYMBOL(rte_sampler_poll)
+int
+rte_sampler_poll(void)
+{
+unsigned int i;
+int polled = 0;
+uint64_t current_time, elapsed_ms;
+
+for (i = 0; i < sampler_global.num_sessions; i++) {
+struct rte_sampler_session *session = sampler_global.sessions[i];
+
+if (session == NULL || !session->valid)
+continue;
+
+/* Skip inactive sessions */
+if (!rte_sampler_session_is_active(session))
+continue;
+
+/* Skip manual sessions (interval == 0) */
+if (session->sample_interval_ms == 0)
+continue;
+
+/* Check if it's time to sample */
+current_time = rte_get_timer_cycles();
+elapsed_ms = (current_time - session->last_sample_time) * 1000 /
+     rte_get_timer_hz();
+
+if (elapsed_ms >= session->sample_interval_ms) {
+rte_sampler_sample(session);
+polled++;
+}
+}
+
+return polled;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_names_get)
 int
-rte_sampler_xstats_names_get(struct rte_sampler *sampler,
-      int source_handle,
+rte_sampler_xstats_names_get(struct rte_sampler_session *session,
+      struct rte_sampler_source *source,
       struct rte_sampler_xstats_name *xstats_names,
       unsigned int size)
 {
-struct sampler_source *source;
 unsigned int total = 0;
 unsigned int i, j;
 
-if (sampler == NULL)
+if (session == NULL || !session->valid)
 return -EINVAL;
 
 /* Get from specific source */
-if (source_handle >= 0) {
-if ((unsigned int)source_handle >= MAX_SOURCES)
+if (source != NULL) {
+if (!source->valid || source->session != session)
 return -EINVAL;
-
-source = &sampler->sources[source_handle];
-if (!source->valid)
-return -ENOENT;
 
 if (xstats_names == NULL)
 return source->xstats_count;
@@ -295,20 +468,20 @@ return i;
 }
 
 /* Get from all sources */
-for (i = 0; i < sampler->num_sources; i++) {
-source = &sampler->sources[i];
+for (i = 0; i < session->num_sources; i++) {
+struct rte_sampler_source *src = &session->sources[i];
 
-if (!source->valid)
+if (!src->valid)
 continue;
 
 if (xstats_names != NULL) {
-for (j = 0; j < source->xstats_count && 
+for (j = 0; j < src->xstats_count && 
      total + j < size; j++) {
-xstats_names[total + j] = source->xstats_names[j];
+xstats_names[total + j] = src->xstats_names[j];
 }
 }
 
-total += source->xstats_count;
+total += src->xstats_count;
 }
 
 return total;
@@ -316,27 +489,22 @@ return total;
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_get)
 int
-rte_sampler_xstats_get(struct rte_sampler *sampler,
-       int source_handle,
+rte_sampler_xstats_get(struct rte_sampler_session *session,
+       struct rte_sampler_source *source,
        const uint64_t *ids,
        uint64_t *values,
        unsigned int n)
 {
-struct sampler_source *source;
 unsigned int total = 0;
 unsigned int i, j;
 
-if (sampler == NULL || values == NULL)
+if (session == NULL || !session->valid || values == NULL)
 return -EINVAL;
 
 /* Get from specific source */
-if (source_handle >= 0) {
-if ((unsigned int)source_handle >= MAX_SOURCES)
+if (source != NULL) {
+if (!source->valid || source->session != session)
 return -EINVAL;
-
-source = &sampler->sources[source_handle];
-if (!source->valid)
-return -ENOENT;
 
 /* If ids is NULL, return all values */
 if (ids == NULL) {
@@ -360,16 +528,16 @@ return n;
 }
 
 /* Get from all sources */
-for (i = 0; i < sampler->num_sources; i++) {
-source = &sampler->sources[i];
+for (i = 0; i < session->num_sources; i++) {
+struct rte_sampler_source *src = &session->sources[i];
 
-if (!source->valid)
+if (!src->valid)
 continue;
 
-for (j = 0; j < source->xstats_count; j++) {
+for (j = 0; j < src->xstats_count; j++) {
 if (total >= n)
 break;
-values[total++] = source->values[j];
+values[total++] = src->values[j];
 }
 }
 
@@ -378,26 +546,21 @@ return total;
 
 RTE_EXPORT_SYMBOL(rte_sampler_xstats_reset)
 int
-rte_sampler_xstats_reset(struct rte_sampler *sampler,
-  int source_handle,
+rte_sampler_xstats_reset(struct rte_sampler_session *session,
+  struct rte_sampler_source *source,
   const uint64_t *ids,
   unsigned int n)
 {
-struct sampler_source *source;
 unsigned int i;
 int ret;
 
-if (sampler == NULL)
+if (session == NULL || !session->valid)
 return -EINVAL;
 
 /* Reset specific source */
-if (source_handle >= 0) {
-if ((unsigned int)source_handle >= MAX_SOURCES)
+if (source != NULL) {
+if (!source->valid || source->session != session)
 return -EINVAL;
-
-source = &sampler->sources[source_handle];
-if (!source->valid)
-return -ENOENT;
 
 if (source->ops.xstats_reset != NULL) {
 ret = source->ops.xstats_reset(
@@ -416,23 +579,23 @@ return 0;
 }
 
 /* Reset all sources */
-for (i = 0; i < sampler->num_sources; i++) {
-source = &sampler->sources[i];
+for (i = 0; i < session->num_sources; i++) {
+struct rte_sampler_source *src = &session->sources[i];
 
-if (!source->valid)
+if (!src->valid)
 continue;
 
-if (source->ops.xstats_reset != NULL) {
-ret = source->ops.xstats_reset(
-source->source_id,
+if (src->ops.xstats_reset != NULL) {
+ret = src->ops.xstats_reset(
+src->source_id,
 ids,
 n,
-source->user_data);
+src->user_data);
 /* Continue with other sources on error */
 }
 
 /* Clear cached values */
-memset(source->values, 0, sizeof(source->values));
+memset(src->values, 0, sizeof(src->values));
 }
 
 return 0;
