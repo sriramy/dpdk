@@ -6,6 +6,8 @@
 #include <eal_export.h>
 #include <rte_common.h>
 #include <rte_malloc.h>
+#include <rte_log.h>
+#include <rte_string_fns.h>
 #include <rte_sampler.h>
 
 #define MAX_SOURCES 64
@@ -210,6 +212,14 @@ source->user_data);
 if (ret < 0)
 continue;
 
+if (ret > MAX_XSTATS_PER_SOURCE) {
+RTE_LOG(WARNING, USER1,
+"Source %s (id=%u) has %d xstats, "
+"but only %d can be sampled (truncated)\n",
+source->name, source->source_id,
+ret, MAX_XSTATS_PER_SOURCE);
+}
+
 source->xstats_count = ret < MAX_XSTATS_PER_SOURCE ? 
        ret : MAX_XSTATS_PER_SOURCE;
 }
@@ -356,11 +366,11 @@ source = &sampler->sources[i];
 if (!source->valid)
 continue;
 
-for (j = 0; j < source->xstats_count && total + j < n; j++) {
-values[total + j] = source->values[j];
+for (j = 0; j < source->xstats_count; j++) {
+if (total >= n)
+break;
+values[total++] = source->values[j];
 }
-
-total += source->xstats_count;
 }
 
 return total;

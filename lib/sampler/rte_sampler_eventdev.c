@@ -7,6 +7,7 @@
 #include <rte_common.h>
 #include <rte_eventdev.h>
 #include <rte_malloc.h>
+#include <rte_string_fns.h>
 #include <rte_sampler.h>
 #include <rte_sampler_eventdev.h>
 
@@ -127,21 +128,21 @@ eventdev_xstats_reset(uint16_t source_id,
 {
 struct eventdev_source_data *data = user_data;
 enum rte_event_dev_xstats_mode mode;
-int16_t queue_port_id;
+int16_t reset_queue_port_id;
 
 /* Map sampler mode to eventdev mode */
 switch (data->mode) {
 case RTE_SAMPLER_EVENTDEV_DEVICE:
 mode = RTE_EVENT_DEV_XSTATS_DEVICE;
-queue_port_id = -1;
+reset_queue_port_id = -1;
 break;
 case RTE_SAMPLER_EVENTDEV_PORT:
 mode = RTE_EVENT_DEV_XSTATS_PORT;
-queue_port_id = data->queue_port_id;
+reset_queue_port_id = data->queue_port_id;
 break;
 case RTE_SAMPLER_EVENTDEV_QUEUE:
 mode = RTE_EVENT_DEV_XSTATS_QUEUE;
-queue_port_id = data->queue_port_id;
+reset_queue_port_id = data->queue_port_id;
 break;
 default:
 return -EINVAL;
@@ -149,7 +150,7 @@ return -EINVAL;
 
 return rte_event_dev_xstats_reset((uint8_t)source_id,
   mode,
-  queue_port_id,
+  reset_queue_port_id,
   ids,
   n);
 }

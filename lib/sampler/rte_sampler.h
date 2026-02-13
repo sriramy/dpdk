@@ -12,6 +12,11 @@
  * Generic sampler library that supports registering multiple sampler sources
  * (e.g., eventdev, ethdev, cryptodev) and multiple sampler sinks
  * (e.g., metrics, telemetry, file). Provides standard xstats-style API.
+ *
+ * Implementation Limits:
+ * - Maximum sources: 64
+ * - Maximum sinks: 16
+ * - Maximum xstats per source: 256
  */
 
 #include <stdint.h>
@@ -23,8 +28,9 @@ extern "C" {
 
 /**
  * Maximum length of a sampler xstats name
+ * Sized to accommodate composite names with source prefixes
  */
-#define RTE_SAMPLER_XSTATS_NAME_SIZE 64
+#define RTE_SAMPLER_XSTATS_NAME_SIZE 128
 
 /**
  * Sampler xstats name structure
