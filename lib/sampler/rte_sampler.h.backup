@@ -64,9 +64,9 @@ struct rte_sampler_session;
  * Session configuration
  */
 struct rte_sampler_session_conf {
-uint64_t sample_interval_ms;  /**< Sampling interval in milliseconds (0 = manual) */
-uint64_t duration_ms;         /**< Session duration in milliseconds (0 = infinite) */
-const char *name;             /**< Optional session name for identification */
+	uint64_t sample_interval_ms;  /**< Sampling interval in milliseconds (0 = manual) */
+	uint64_t duration_ms;         /**< Session duration in milliseconds (0 = infinite) */
+	const char *name;             /**< Optional session name for identification */
 };
 
 /**
@@ -181,77 +181,29 @@ rte_sampler_sink_output_t output;
 };
 
 /**
- * Free session structure
+ * Free sampler structure
  *
- * @param session
- *   Pointer allocated by rte_sampler_session_create()
- *   If session is NULL, no operation is performed.
+ * @param sampler
+ *   Pointer allocated by rte_sampler_create()
+ *   If sampler is NULL, no operation is performed.
  */
-void rte_sampler_session_free(struct rte_sampler_session *session);
+void rte_sampler_free(struct rte_sampler *sampler);
 
 /**
- * Allocate a sampler session
+ * Allocate a sampler structure
  *
- * @param conf
- *   Pointer to session configuration. If NULL, uses default config
- *   (manual sampling, infinite duration).
  * @return
- *   - Pointer to session structure on success
+ *   - Pointer to structure on success
  *   - NULL on error (zmalloc failure)
  */
-struct rte_sampler_session *rte_sampler_session_create(
-const struct rte_sampler_session_conf *conf)
-__rte_malloc __rte_dealloc(rte_sampler_session_free, 1);
+struct rte_sampler *rte_sampler_create(void)
+__rte_malloc __rte_dealloc(rte_sampler_free, 1);
 
 /**
- * Start a sampling session
+ * Register a sampler source
  *
- * For sessions with non-zero sample_interval_ms, starts automatic periodic sampling.
- * For manual sessions (sample_interval_ms = 0), just marks the session as active.
- *
- * @param session
- *   Pointer to session structure
- * @return
- *   Zero on success, negative on error
- */
-int rte_sampler_session_start(struct rte_sampler_session *session);
-
-/**
- * Stop a sampling session
- *
- * Stops automatic sampling and marks the session as inactive.
- *
- * @param session
- *   Pointer to session structure
- * @return
- *   Zero on success, negative on error
- */
-int rte_sampler_session_stop(struct rte_sampler_session *session);
-
-/**
- * Check if session is still active
- *
- * @param session
- *   Pointer to session structure
- * @return
- *   1 if active, 0 if stopped or expired, negative on error
- */
-int rte_sampler_session_is_active(struct rte_sampler_session *session);
-
-/**
- * Free source structure
- *
- * @param source
- *   Pointer returned by rte_sampler_source_register()
- *   If source is NULL, no operation is performed.
- */
-void rte_sampler_source_free(struct rte_sampler_source *source);
-
-/**
- * Register a sampler source to a session
- *
- * @param session
- *   Pointer to session structure
+ * @param sampler
+ *   Pointer to sampler structure
  * @param source_name
  *   Name of the source (e.g., "eventdev", "ethdev")
  * @param source_id
@@ -261,40 +213,32 @@ void rte_sampler_source_free(struct rte_sampler_source *source);
  * @param user_data
  *   User-provided data to pass to callbacks
  * @return
- *   Pointer to source structure on success, NULL on error
+ *   Source handle on success, negative on error
  */
-struct rte_sampler_source *rte_sampler_source_register(
-struct rte_sampler_session *session,
-const char *source_name,
-uint16_t source_id,
-const struct rte_sampler_source_ops *ops,
-void *user_data)
-__rte_malloc __rte_dealloc(rte_sampler_source_free, 1);
+int rte_sampler_source_register(struct rte_sampler *sampler,
+ const char *source_name,
+ uint16_t source_id,
+ const struct rte_sampler_source_ops *ops,
+ void *user_data);
 
 /**
- * Unregister a sampler source from a session
+ * Unregister a sampler source
  *
- * @param source
- *   Pointer returned by rte_sampler_source_register()
+ * @param sampler
+ *   Pointer to sampler structure
+ * @param source_handle
+ *   Source handle returned by rte_sampler_source_register()
  * @return
  *   Zero on success, negative on error
  */
-int rte_sampler_source_unregister(struct rte_sampler_source *source);
+int rte_sampler_source_unregister(struct rte_sampler *sampler,
+   int source_handle);
 
 /**
- * Free sink structure
+ * Register a sampler sink
  *
- * @param sink
- *   Pointer returned by rte_sampler_sink_register()
- *   If sink is NULL, no operation is performed.
- */
-void rte_sampler_sink_free(struct rte_sampler_sink *sink);
-
-/**
- * Register a sampler sink to a session
- *
- * @param session
- *   Pointer to session structure
+ * @param sampler
+ *   Pointer to sampler structure
  * @param sink_name
  *   Name of the sink (e.g., "metrics", "telemetry")
  * @param ops
@@ -302,58 +246,43 @@ void rte_sampler_sink_free(struct rte_sampler_sink *sink);
  * @param user_data
  *   User-provided data to pass to callbacks
  * @return
- *   Pointer to sink structure on success, NULL on error
+ *   Sink handle on success, negative on error
  */
-struct rte_sampler_sink *rte_sampler_sink_register(
-struct rte_sampler_session *session,
-const char *sink_name,
-const struct rte_sampler_sink_ops *ops,
-void *user_data)
-__rte_malloc __rte_dealloc(rte_sampler_sink_free, 1);
+int rte_sampler_sink_register(struct rte_sampler *sampler,
+       const char *sink_name,
+       const struct rte_sampler_sink_ops *ops,
+       void *user_data);
 
 /**
- * Unregister a sampler sink from a session
+ * Unregister a sampler sink
  *
- * @param sink
- *   Pointer returned by rte_sampler_sink_register()
+ * @param sampler
+ *   Pointer to sampler structure
+ * @param sink_handle
+ *   Sink handle returned by rte_sampler_sink_register()
  * @return
  *   Zero on success, negative on error
  */
-int rte_sampler_sink_unregister(struct rte_sampler_sink *sink);
+int rte_sampler_sink_unregister(struct rte_sampler *sampler,
+ int sink_handle);
 
 /**
  * Sample statistics from all registered sources and send to all registered sinks
  *
- * This function can be called manually for any session, or will be called
- * automatically for sessions with non-zero sample_interval_ms after calling
- * rte_sampler_session_start().
- *
- * @param session
- *   Pointer to session structure
+ * @param sampler
+ *   Pointer to sampler structure
  * @return
  *   Zero on success, negative on error
  */
-int rte_sampler_sample(struct rte_sampler_session *session);
+int rte_sampler_sample(struct rte_sampler *sampler);
 
 /**
- * Poll all active sessions for automatic sampling
+ * Get xstats names from sampler
  *
- * This function should be called periodically from the main loop to trigger
- * automatic sampling for sessions that have sample_interval_ms > 0.
- * It's a no-op for manual sessions.
- *
- * @return
- *   Number of sessions polled, or negative on error
- */
-int rte_sampler_poll(void);
-
-/**
- * Get xstats names from session
- *
- * @param session
- *   Pointer to session structure
- * @param source
- *   Pointer to source (use NULL for all sources)
+ * @param sampler
+ *   Pointer to sampler structure
+ * @param source_handle
+ *   Source handle (use -1 for all sources)
  * @param xstats_names
  *   Array to be filled with stat names. Can be NULL to query size.
  * @param size
@@ -361,18 +290,18 @@ int rte_sampler_poll(void);
  * @return
  *   Number of stats available or negative on error
  */
-int rte_sampler_xstats_names_get(struct rte_sampler_session *session,
-  struct rte_sampler_source *source,
+int rte_sampler_xstats_names_get(struct rte_sampler *sampler,
+  int source_handle,
   struct rte_sampler_xstats_name *xstats_names,
   unsigned int size);
 
 /**
- * Get xstats values from session
+ * Get xstats values from sampler
  *
- * @param session
- *   Pointer to session structure
- * @param source
- *   Pointer to source (use NULL for all sources)
+ * @param sampler
+ *   Pointer to sampler structure
+ * @param source_handle
+ *   Source handle (use -1 for all sources)
  * @param ids
  *   Array of stat IDs to retrieve
  * @param values
@@ -382,19 +311,19 @@ int rte_sampler_xstats_names_get(struct rte_sampler_session *session,
  * @return
  *   Number of stats retrieved or negative on error
  */
-int rte_sampler_xstats_get(struct rte_sampler_session *session,
-    struct rte_sampler_source *source,
+int rte_sampler_xstats_get(struct rte_sampler *sampler,
+    int source_handle,
     const uint64_t *ids,
     uint64_t *values,
     unsigned int n);
 
 /**
- * Reset xstats in session
+ * Reset xstats in sampler
  *
- * @param session
- *   Pointer to session structure
- * @param source
- *   Pointer to source (use NULL for all sources)
+ * @param sampler
+ *   Pointer to sampler structure
+ * @param source_handle
+ *   Source handle (use -1 for all sources)
  * @param ids
  *   Array of stat IDs to reset. NULL means reset all.
  * @param n
@@ -402,8 +331,8 @@ int rte_sampler_xstats_get(struct rte_sampler_session *session,
  * @return
  *   Zero on success, negative on error
  */
-int rte_sampler_xstats_reset(struct rte_sampler_session *session,
-      struct rte_sampler_source *source,
+int rte_sampler_xstats_reset(struct rte_sampler *sampler,
+      int source_handle,
       const uint64_t *ids,
       unsigned int n);
 

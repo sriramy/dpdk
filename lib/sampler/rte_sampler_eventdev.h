@@ -40,18 +40,19 @@ uint8_t queue_port_id;                 /**< Queue or port ID (mode dependent) */
 /**
  * Register an eventdev as a sampler source
  *
- * @param sampler
- *   Pointer to sampler structure
+ * @param session
+ *   Pointer to sampler session structure
  * @param dev_id
  *   Eventdev device identifier
  * @param conf
  *   Pointer to eventdev sampler configuration
  * @return
- *   Source handle on success, negative on error
+ *   Pointer to source structure on success, NULL on error
  */
-int rte_sampler_eventdev_source_register(struct rte_sampler *sampler,
-  uint8_t dev_id,
-  const struct rte_sampler_eventdev_conf *conf);
+struct rte_sampler_source *rte_sampler_eventdev_source_register(
+				struct rte_sampler_session *session,
+				uint8_t dev_id,
+				const struct rte_sampler_eventdev_conf *conf);
 
 #ifdef __cplusplus
 }
