@@ -1,5 +1,7 @@
-<!-- SPDX-License-Identifier: BSD-3-Clause -->
-<!-- Copyright(c) 2024 Intel Corporation -->
+<!--
+  SPDX-License-Identifier: BSD-3-Clause
+  Copyright(c) 2024 Intel Corporation
+-->
 
 # Sampler Library v3 Design - Merging v1 and v2
 
