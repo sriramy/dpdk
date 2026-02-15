@@ -526,4 +526,4 @@ test_sampler(void)
 	return unit_test_suite_runner(&sampler_tests);
 }
 
-REGISTER_FAST_TEST(sampler_autotest, true, true, test_sampler);
+REGISTER_FAST_TEST(sampler_autotest, NOHUGE_OK, ASAN_OK, test_sampler);
