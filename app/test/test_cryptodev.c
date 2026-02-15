@@ -48,6 +48,7 @@
 #include "test_cryptodev_hmac_test_vectors.h"
 #include "test_cryptodev_mixed_test_vectors.h"
 #include "test_cryptodev_sm4_test_vectors.h"
+#include "test_cryptodev_nxan_test_vectors.h"
 #ifdef RTE_LIB_SECURITY
 #include "test_cryptodev_security_ipsec.h"
 #include "test_cryptodev_security_ipsec_test_vectors.h"
@@ -75,7 +76,7 @@
 
 static int gbl_driver_id;
 
-static enum rte_security_session_action_type gbl_action_type =
+enum rte_security_session_action_type gbl_action_type =
 	RTE_SECURITY_ACTION_TYPE_NONE;
 
 enum cryptodev_api_test_type global_api_test_type = CRYPTODEV_API_TEST;
@@ -289,7 +290,7 @@ process_sym_raw_dp_op(uint8_t dev_id, uint16_t qp_id,
 	struct rte_crypto_vec data_vec[UINT8_MAX], dest_data_vec[UINT8_MAX];
 	struct rte_crypto_va_iova_ptr cipher_iv, digest, aad_auth_iv;
 	union rte_crypto_sym_ofs ofs;
-	struct rte_crypto_sym_vec vec;
+	struct rte_crypto_sym_vec vec = {0};
 	struct rte_crypto_sgl sgl, dest_sgl;
 	uint32_t max_len;
 	union rte_cryptodev_session_ctx sess;
@@ -526,7 +527,7 @@ process_cpu_aead_op(uint8_t dev_id, struct rte_crypto_op *op)
 	struct rte_crypto_sym_op *sop;
 	union rte_crypto_sym_ofs ofs;
 	struct rte_crypto_sgl sgl;
-	struct rte_crypto_sym_vec symvec;
+	struct rte_crypto_sym_vec symvec = {0};
 	struct rte_crypto_va_iova_ptr iv_ptr, aad_ptr, digest_ptr;
 	struct rte_crypto_vec vec[UINT8_MAX];
 
@@ -572,7 +573,7 @@ process_cpu_crypt_auth_op(uint8_t dev_id, struct rte_crypto_op *op)
 	struct rte_crypto_sym_op *sop;
 	union rte_crypto_sym_ofs ofs;
 	struct rte_crypto_sgl sgl;
-	struct rte_crypto_sym_vec symvec;
+	struct rte_crypto_sym_vec symvec = {0};
 	struct rte_crypto_va_iova_ptr iv_ptr, digest_ptr;
 	struct rte_crypto_vec vec[UINT8_MAX];
 
@@ -3488,6 +3489,8 @@ create_wireless_algo_auth_cipher_operation(
 		uint16_t remaining_off = (auth_offset >> 3) + (auth_len >> 3);
 		struct rte_mbuf *sgl_buf = (op_mode == IN_PLACE ?
 				sym_op->m_src : sym_op->m_dst);
+		struct rte_mbuf *sgl_buf_head = sgl_buf;
+
 		while (remaining_off >= rte_pktmbuf_data_len(sgl_buf)) {
 			remaining_off -= rte_pktmbuf_data_len(sgl_buf);
 			sgl_buf = sgl_buf->next;
@@ -3495,11 +3498,18 @@ create_wireless_algo_auth_cipher_operation(
 
 		/* The last segment should be large enough to hold full digest */
 		if (sgl_buf->data_len < auth_tag_len) {
-			rte_pktmbuf_free(sgl_buf->next);
-			sgl_buf->next = NULL;
-			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(sgl_buf,
-					auth_tag_len - sgl_buf->data_len),
-					"No room to append auth tag");
+			uint16_t next_data_len = 0;
+			if (sgl_buf->next != NULL) {
+				next_data_len = sgl_buf->next->data_len;
+
+				rte_pktmbuf_free(sgl_buf->next);
+				sgl_buf->next = NULL;
+				sgl_buf_head->nb_segs -= 1;
+				sgl_buf_head->pkt_len -= next_data_len;
+			}
+			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(
+						sgl_buf_head, auth_tag_len - sgl_buf->data_len),
+						"No room to append auth tag");
 		}
 
 		sym_op->auth.digest.data = rte_pktmbuf_mtod_offset(sgl_buf,
@@ -9707,7 +9717,6 @@ test_pdcp_proto_SGL(int i, int oop,
 	int ret = TEST_SUCCESS;
 	int to_trn = 0;
 	int to_trn_tbl[16];
-	int segs = 1;
 	unsigned int trn_data = 0;
 	struct rte_cryptodev_info dev_info;
 	uint64_t feat_flags;
@@ -9776,7 +9785,6 @@ test_pdcp_proto_SGL(int i, int oop,
 	 */
 
 	while (trn_data < input_vec_len) {
-		++segs;
 		to_trn = (input_vec_len - trn_data < fragsz) ?
 				(input_vec_len - trn_data) : fragsz;
 
@@ -9784,6 +9792,7 @@ test_pdcp_proto_SGL(int i, int oop,
 
 		buf->next = rte_pktmbuf_alloc(ts_params->mbuf_pool);
 		buf = buf->next;
+		ut_params->ibuf->nb_segs++;
 
 		memset(rte_pktmbuf_mtod(buf, uint8_t *), 0,
 				rte_pktmbuf_tailroom(buf));
@@ -9793,28 +9802,27 @@ test_pdcp_proto_SGL(int i, int oop,
 			buf_oop->next =
 					rte_pktmbuf_alloc(ts_params->mbuf_pool);
 			buf_oop = buf_oop->next;
+			ut_params->obuf->nb_segs++;
 			memset(rte_pktmbuf_mtod(buf_oop, uint8_t *),
 					0, rte_pktmbuf_tailroom(buf_oop));
-			rte_pktmbuf_append(buf_oop, to_trn);
+			TEST_ASSERT_NOT_NULL(ut_params->obuf, "Output buffer not initialized");
+			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(ut_params->obuf, to_trn), "Failed to append to mbuf");
 		}
 
-		plaintext = (uint8_t *)rte_pktmbuf_append(buf,
+		plaintext = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
 				to_trn);
+		TEST_ASSERT_NOT_NULL(plaintext, "Failed to append plaintext");
 
 		memcpy(plaintext, input_vec + trn_data, to_trn);
 		trn_data += to_trn;
 	}
 
-	ut_params->ibuf->nb_segs = segs;
-
-	segs = 1;
 	if (fragsz_oop && oop) {
 		to_trn = 0;
 		ecx = 0;
 
 		trn_data = frag_size_oop;
 		while (trn_data < output_vec_len) {
-			++segs;
 			to_trn =
 				(output_vec_len - trn_data <
 						frag_size_oop) ?
@@ -9826,13 +9834,13 @@ test_pdcp_proto_SGL(int i, int oop,
 			buf_oop->next =
 				rte_pktmbuf_alloc(ts_params->mbuf_pool);
 			buf_oop = buf_oop->next;
+			ut_params->obuf->nb_segs++;
 			memset(rte_pktmbuf_mtod(buf_oop, uint8_t *),
 					0, rte_pktmbuf_tailroom(buf_oop));
-			rte_pktmbuf_append(buf_oop, to_trn);
+			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(ut_params->obuf, to_trn), "Failed to append to mbuf");
 
 			trn_data += to_trn;
 		}
-		ut_params->obuf->nb_segs = segs;
 	}
 
 	/* Setup Cipher Parameters */
@@ -14261,6 +14269,12 @@ test_AES_CCM_authenticated_encryption_test_case_128_3(void)
 }
 
 static int
+test_AES_CCM_authenticated_encryption_test_case_128_4(void)
+{
+	return test_authenticated_encryption(&ccm_test_case_128_4);
+}
+
+static int
 test_AES_CCM_authenticated_decryption_test_case_128_1(void)
 {
 	return test_authenticated_decryption(&ccm_test_case_128_1);
@@ -14276,6 +14290,12 @@ static int
 test_AES_CCM_authenticated_decryption_test_case_128_3(void)
 {
 	return test_authenticated_decryption(&ccm_test_case_128_3);
+}
+
+static int
+test_AES_CCM_authenticated_decryption_test_case_128_4(void)
+{
+	return test_authenticated_decryption(&ccm_test_case_128_4);
 }
 
 static int
@@ -15845,7 +15865,6 @@ test_AES_GMAC_authentication_SGL(const struct gmac_test_data *tdata,
 	uint64_t feature_flags;
 	unsigned int trn_data = 0;
 	void *digest_mem = NULL;
-	uint32_t segs = 1;
 	unsigned int to_trn = 0;
 	struct rte_mbuf *buf = NULL;
 	uint8_t *auth_tag, *plaintext;
@@ -15906,27 +15925,29 @@ test_AES_GMAC_authentication_SGL(const struct gmac_test_data *tdata,
 	 */
 
 	while (trn_data < tdata->plaintext.len) {
-		++segs;
 		to_trn = (tdata->plaintext.len - trn_data < fragsz) ?
 				(tdata->plaintext.len - trn_data) : fragsz;
 
 		buf->next = rte_pktmbuf_alloc(ts_params->mbuf_pool);
 		buf = buf->next;
+		ut_params->ibuf->nb_segs++;
 
 		memset(rte_pktmbuf_mtod(buf, uint8_t *), 0,
 				rte_pktmbuf_tailroom(buf));
 
-		plaintext = (uint8_t *)rte_pktmbuf_append(buf,
+		plaintext = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
 				to_trn);
+		TEST_ASSERT_NOT_NULL(plaintext, "Failed to append plaintext");
 
 		memcpy(plaintext, tdata->plaintext.data + trn_data,
 				to_trn);
 		trn_data += to_trn;
-		if (trn_data  == tdata->plaintext.len)
-			digest_mem = (uint8_t *)rte_pktmbuf_append(buf,
+		if (trn_data  == tdata->plaintext.len) {
+			digest_mem = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
 					tdata->gmac_tag.len);
+			TEST_ASSERT_NOT_NULL(digest_mem, "Failed to append digest data");
+		}
 	}
-	ut_params->ibuf->nb_segs = segs;
 
 	/*
 	 * Place digest at the end of the last buffer
@@ -17079,7 +17100,6 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 	int retval;
 	int to_trn = 0;
 	int to_trn_tbl[SGL_MAX_NO];
-	int segs = 1;
 	unsigned int trn_data = 0;
 	uint8_t *plaintext, *ciphertext, *auth_tag;
 	struct rte_cryptodev_info dev_info;
@@ -17204,7 +17224,6 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 	 */
 
 	while (trn_data < tdata->plaintext.len) {
-		++segs;
 		to_trn = (tdata->plaintext.len - trn_data < fragsz) ?
 				(tdata->plaintext.len - trn_data) : fragsz;
 
@@ -17212,6 +17231,7 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 
 		buf->next = rte_pktmbuf_alloc(ts_params->mbuf_pool);
 		buf = buf->next;
+		ut_params->ibuf->nb_segs++;
 
 		memset(rte_pktmbuf_mtod(buf, uint8_t *), 0,
 				rte_pktmbuf_tailroom(buf));
@@ -17221,33 +17241,36 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 			buf_last_oop = buf_oop->next =
 					rte_pktmbuf_alloc(ts_params->mbuf_pool);
 			buf_oop = buf_oop->next;
+			ut_params->obuf->nb_segs++;
 			memset(rte_pktmbuf_mtod(buf_oop, uint8_t *),
 					0, rte_pktmbuf_tailroom(buf_oop));
-			rte_pktmbuf_append(buf_oop, to_trn);
+			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(ut_params->obuf, to_trn), "Failed to append to mbuf");
 		}
 
-		plaintext = (uint8_t *)rte_pktmbuf_append(buf,
+		plaintext = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
 				to_trn);
+		TEST_ASSERT_NOT_NULL(plaintext, "Failed to append plaintext");
 
 		memcpy(plaintext, tdata->plaintext.data + trn_data,
 				to_trn);
 		trn_data += to_trn;
 		if (trn_data  == tdata->plaintext.len) {
 			if (oop) {
-				if (!fragsz_oop)
-					digest_mem = rte_pktmbuf_append(buf_oop,
+				if (!fragsz_oop) {
+					digest_mem = rte_pktmbuf_append(ut_params->obuf,
 						tdata->auth_tag.len);
-			} else
-				digest_mem = (uint8_t *)rte_pktmbuf_append(buf,
+					TEST_ASSERT_NOT_NULL(digest_mem, "Failed to append auth tag");
+				}
+			} else {
+				digest_mem = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
 					tdata->auth_tag.len);
+				TEST_ASSERT_NOT_NULL(digest_mem, "Failed to append auth tag");
+			}
 		}
 	}
 
 	uint64_t digest_phys = 0;
 
-	ut_params->ibuf->nb_segs = segs;
-
-	segs = 1;
 	if (fragsz_oop && oop) {
 		to_trn = 0;
 		ecx = 0;
@@ -17263,7 +17286,6 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 
 		trn_data = frag_size_oop;
 		while (trn_data < tdata->plaintext.len) {
-			++segs;
 			to_trn =
 				(tdata->plaintext.len - trn_data <
 						frag_size_oop) ?
@@ -17274,20 +17296,21 @@ test_authenticated_encryption_SGL(const struct aead_test_data *tdata,
 
 			buf_last_oop = buf_oop->next =
 					rte_pktmbuf_alloc(ts_params->mbuf_pool);
+			TEST_ASSERT_NOT_NULL(buf_oop->next, "Unexpected end of chain");
+			ut_params->obuf->nb_segs++;
 			buf_oop = buf_oop->next;
 			memset(rte_pktmbuf_mtod(buf_oop, uint8_t *),
 					0, rte_pktmbuf_tailroom(buf_oop));
-			rte_pktmbuf_append(buf_oop, to_trn);
+			TEST_ASSERT_NOT_NULL(rte_pktmbuf_append(ut_params->obuf, to_trn), "Failed to append to mbuf");
 
 			trn_data += to_trn;
 
 			if (trn_data  == tdata->plaintext.len) {
-				digest_mem = rte_pktmbuf_append(buf_oop,
+				digest_mem = rte_pktmbuf_append(ut_params->obuf,
 					tdata->auth_tag.len);
+				TEST_ASSERT_NOT_NULL(digest_mem, "Failed to append auth tag");
 			}
 		}
-
-		ut_params->obuf->nb_segs = segs;
 	}
 
 	/*
@@ -17680,8 +17703,15 @@ scheduler_testsuite_setup(void)
 		RTE_LCORE_FOREACH_WORKER(i) {
 			if (worker_core_count > 1)
 				break;
-			snprintf(vdev_args, sizeof(vdev_args),
-					"%s%d", temp_str, i);
+			ret = snprintf(vdev_args, sizeof(vdev_args), "%s%d", temp_str, i);
+
+			/* If too many args the result will have been truncated */
+			if (ret >= VDEV_ARGS_SIZE) {
+				RTE_LOG(ERR, USER1,
+					"Cryptodev scheduler test vdev arg size exceeded\n");
+				return TEST_FAILED;
+			}
+
 			strcpy(temp_str, vdev_args);
 			strlcat(temp_str, ";", sizeof(temp_str));
 			worker_core_count++;
@@ -17695,8 +17725,14 @@ scheduler_testsuite_setup(void)
 			return TEST_FAILED;
 		}
 		strcpy(temp_str, vdev_args);
-		snprintf(vdev_args, sizeof(vdev_args), "%s,socket_id=%d",
-				temp_str, socket_id);
+		ret = snprintf(vdev_args, sizeof(vdev_args), "%s,socket_id=%d", temp_str,
+			socket_id);
+		if (ret >= VDEV_ARGS_SIZE) {
+			RTE_LOG(ERR, USER1,
+				"Cryptodev scheduler test vdev arg size exceeded\n");
+			return TEST_FAILED;
+		}
+
 		RTE_LOG(DEBUG, USER1, "vdev_args: %s\n", vdev_args);
 		nb_devs = rte_cryptodev_device_count_by_driver(
 				rte_cryptodev_driver_id_get(
@@ -18954,6 +18990,8 @@ static struct unit_test_suite cryptodev_aes_ccm_auth_testsuite  = {
 			test_AES_CCM_authenticated_encryption_test_case_128_2),
 		TEST_CASE_ST(ut_setup, ut_teardown,
 			test_AES_CCM_authenticated_encryption_test_case_128_3),
+		TEST_CASE_ST(ut_setup, ut_teardown,
+			test_AES_CCM_authenticated_encryption_test_case_128_4),
 
 		/** AES CCM Authenticated Decryption 128 bits key*/
 		TEST_CASE_ST(ut_setup, ut_teardown,
@@ -18962,6 +19000,8 @@ static struct unit_test_suite cryptodev_aes_ccm_auth_testsuite  = {
 			test_AES_CCM_authenticated_decryption_test_case_128_2),
 		TEST_CASE_ST(ut_setup, ut_teardown,
 			test_AES_CCM_authenticated_decryption_test_case_128_3),
+		TEST_CASE_ST(ut_setup, ut_teardown,
+			test_AES_CCM_authenticated_decryption_test_case_128_4),
 
 		/** AES CCM Authenticated Encryption 192 bits key */
 		TEST_CASE_ST(ut_setup, ut_teardown,
@@ -19832,6 +19872,583 @@ static struct unit_test_suite cryptodev_sm4_gcm_testsuite  = {
 };
 
 static int
+nxan_testsuite_setup(enum rte_crypto_sym_xform_type xform_type)
+{
+	struct crypto_testsuite_params *ts_params = &testsuite_params;
+	uint8_t dev_id = ts_params->valid_devs[0];
+	struct rte_cryptodev_info dev_info;
+	const enum rte_crypto_cipher_algorithm ciphers[] = {
+		RTE_CRYPTO_CIPHER_SNOW5G_NEA4,
+		RTE_CRYPTO_CIPHER_AES_NEA5,
+		RTE_CRYPTO_CIPHER_ZUC_NEA6
+	};
+	const enum rte_crypto_auth_algorithm auths[] = {
+		RTE_CRYPTO_AUTH_SNOW5G_NIA4,
+		RTE_CRYPTO_AUTH_AES_NIA5,
+		RTE_CRYPTO_AUTH_ZUC_NIA6
+	};
+	const enum rte_crypto_aead_algorithm aeads[] = {
+		RTE_CRYPTO_AEAD_SNOW5G_NCA4,
+		RTE_CRYPTO_AEAD_AES_NCA5,
+		RTE_CRYPTO_AEAD_ZUC_NCA6
+	};
+
+	rte_cryptodev_info_get(dev_id, &dev_info);
+
+	if (!(dev_info.feature_flags & RTE_CRYPTODEV_FF_SYMMETRIC_CRYPTO) ||
+			((global_api_test_type == CRYPTODEV_RAW_API_TEST) &&
+			!(dev_info.feature_flags & RTE_CRYPTODEV_FF_SYM_RAW_DP))) {
+		RTE_LOG(INFO, USER1, "Feature flag requirements for NxA4/5/6 "
+				"testsuite not met\n");
+		return TEST_SKIPPED;
+	}
+
+	if ((xform_type == RTE_CRYPTO_SYM_XFORM_CIPHER &&
+		check_cipher_capabilities_supported(ciphers, RTE_DIM(ciphers)) != 0) ||
+		(xform_type == RTE_CRYPTO_SYM_XFORM_AUTH &&
+		check_auth_capabilities_supported(auths, RTE_DIM(auths)) != 0) ||
+		(xform_type == RTE_CRYPTO_SYM_XFORM_AEAD &&
+		check_aead_capabilities_supported(aeads, RTE_DIM(aeads)) != 0)) {
+		RTE_LOG(INFO, USER1, "Capability requirements for NxA4/5/6 "
+				"testsuite not met\n");
+		return TEST_SKIPPED;
+	}
+
+	return 0;
+}
+
+static int
+nea_testsuite_setup(void)
+{
+	return nxan_testsuite_setup(RTE_CRYPTO_SYM_XFORM_CIPHER);
+}
+
+static int
+nia_testsuite_setup(void)
+{
+	return nxan_testsuite_setup(RTE_CRYPTO_SYM_XFORM_AUTH);
+}
+
+static int
+nca_testsuite_setup(void)
+{
+	return nxan_testsuite_setup(RTE_CRYPTO_SYM_XFORM_AEAD);
+}
+
+static int
+test_NEA_helper(
+	const struct nxa_256_test_data *tdata,
+	enum rte_crypto_cipher_operation op)
+{
+	struct crypto_testsuite_params *ts_params = &testsuite_params;
+	struct crypto_unittest_params *ut_params = &unittest_params;
+
+	int retval;
+	uint8_t *input, *output;
+	uint32_t pad_len;
+	uint32_t len;
+	bool is_enc = (op == RTE_CRYPTO_CIPHER_OP_ENCRYPT);
+
+	if (gbl_action_type == RTE_SECURITY_ACTION_TYPE_CPU_CRYPTO)
+		return TEST_SKIPPED;
+
+	/* Create session */
+	retval = create_wireless_algo_cipher_session(ts_params->valid_devs[0],
+					RTE_CRYPTO_CIPHER_OP_ENCRYPT,
+					tdata->cipher_algo, tdata->key, 32, 16);
+	if (retval != 0)
+		return retval;
+
+	ut_params->ibuf = rte_pktmbuf_alloc(ts_params->mbuf_pool);
+
+	/* Clear mbuf payload */
+	memset(rte_pktmbuf_mtod(ut_params->ibuf, uint8_t *), 0,
+	       rte_pktmbuf_tailroom(ut_params->ibuf));
+
+	len = ceil_byte_length(tdata->msg_size);
+	/* Append data which is padded to a multiple */
+	/* of the algorithms block size */
+	pad_len = RTE_ALIGN_CEIL(len, 8);
+	input = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
+				pad_len);
+	memcpy(input, is_enc ? tdata->plaintext : tdata->ciphertext, len);
+	debug_hexdump(stdout, "input:", input, len);
+
+	/* Create operation */
+	retval = create_wireless_algo_cipher_operation(tdata->iv,
+				16, RTE_ALIGN_CEIL(tdata->msg_size, 8), 0);
+	if (retval != 0)
+		return retval;
+
+	if (global_api_test_type == CRYPTODEV_RAW_API_TEST) {
+		retval = process_sym_raw_dp_op(ts_params->valid_devs[0], 0, ut_params->op, 1, 0, 1,
+					       16);
+		if (retval != TEST_SUCCESS)
+			return retval;
+	} else
+		ut_params->op = process_crypto_request(ts_params->valid_devs[0],
+				ut_params->op);
+	TEST_ASSERT_NOT_NULL(ut_params->op, "failed to retrieve obuf");
+
+	ut_params->obuf = ut_params->op->sym->m_dst;
+	if (ut_params->obuf)
+		output = rte_pktmbuf_mtod(ut_params->obuf, uint8_t *);
+	else
+		output = input;
+
+	debug_hexdump(stdout, "output:", output, len);
+	const uint8_t *reference_output =
+		is_enc ? tdata->ciphertext : tdata->plaintext;
+	/* Validate obuf */
+	TEST_ASSERT_BUFFERS_ARE_EQUAL_BIT(
+		output,
+		reference_output,
+		tdata->msg_size,
+		"Output data not as expected");
+	return 0;
+}
+
+static int
+test_NIA_helper(const void *td)
+{
+	struct crypto_testsuite_params *ts_params = &testsuite_params;
+	struct crypto_unittest_params *ut_params = &unittest_params;
+	const struct nxa_256_test_data *tdata = td;
+
+	int retval;
+	uint32_t plaintext_pad_len;
+	uint32_t plaintext_len;
+	uint8_t *plaintext;
+
+	if (gbl_action_type == RTE_SECURITY_ACTION_TYPE_CPU_CRYPTO)
+		return TEST_SKIPPED;
+
+	/* Create auth session */
+	retval = create_wireless_algo_hash_session(ts_params->valid_devs[0],
+				tdata->key, 32,
+				16, tdata->tag_size >> 3,
+				RTE_CRYPTO_AUTH_OP_VERIFY,
+				tdata->auth_algo);
+	if (retval != 0)
+		return retval;
+	/* alloc mbuf and set payload */
+	ut_params->ibuf = rte_pktmbuf_alloc(ts_params->mbuf_pool);
+
+	memset(rte_pktmbuf_mtod(ut_params->ibuf, uint8_t *), 0,
+	rte_pktmbuf_tailroom(ut_params->ibuf));
+
+	plaintext_len = ceil_byte_length(tdata->msg_size);
+	/* Append data which is padded to a multiple */
+	/* of the algorithms block size */
+	plaintext_pad_len = RTE_ALIGN_CEIL(plaintext_len, 8);
+	plaintext = (uint8_t *)rte_pktmbuf_append(ut_params->ibuf,
+				plaintext_pad_len);
+	memcpy(plaintext, tdata->plaintext, plaintext_len);
+
+	/* Create auth operation */
+	retval = create_wireless_algo_hash_operation(tdata->tag,
+			tdata->tag_size >> 3,
+			tdata->iv, 16,
+			plaintext_pad_len,
+			RTE_CRYPTO_AUTH_OP_VERIFY,
+			tdata->msg_size,
+			0);
+	if (retval != 0)
+		return retval;
+
+	if (global_api_test_type == CRYPTODEV_RAW_API_TEST) {
+		retval = process_sym_raw_dp_op(ts_params->valid_devs[0], 0, ut_params->op, 0, 1, 1,
+					       0);
+		if (retval != TEST_SUCCESS)
+			return retval;
+	} else
+		ut_params->op = process_crypto_request(ts_params->valid_devs[0],
+				ut_params->op);
+	TEST_ASSERT_NOT_NULL(ut_params->op, "Crypto request failed");
+	ut_params->obuf = ut_params->op->sym->m_src;
+	ut_params->digest = rte_pktmbuf_mtod_offset(ut_params->obuf,
+						    uint8_t *,
+						    plaintext_pad_len);
+
+	/* Validate obuf */
+	if (ut_params->op->status == RTE_CRYPTO_OP_STATUS_SUCCESS)
+		return 0;
+	else
+		return -1;
+
+	return 0;
+}
+
+static int
+test_NCA_helper(
+	const struct nxa_256_test_data *tdata,
+	enum rte_crypto_cipher_operation op)
+{
+	struct aead_test_data aead_tdata = {
+		.algo = tdata->aead_algo,
+		.key = {
+			.len = 32,
+		},
+		.iv = {
+			.len = 16,
+		},
+		.aad = {
+			.data = (uint8_t *)(uintptr_t)tdata->aad,
+			.len = tdata->aad_size >> 3,
+		},
+		.plaintext = {
+			.len = tdata->msg_size >> 3,
+		},
+		.ciphertext = {
+			.len = tdata->msg_size >> 3,
+		},
+		.auth_tag = {
+			.len = tdata->tag_size >> 3,
+		},
+	};
+
+	memcpy(aead_tdata.key.data, tdata->key, 32);
+	memcpy(aead_tdata.iv.data, tdata->iv, 16);
+	memcpy(aead_tdata.plaintext.data, tdata->plaintext,
+		tdata->msg_size >> 3);
+	memcpy(aead_tdata.ciphertext.data, tdata->ciphertext,
+		tdata->msg_size >> 3);
+	memcpy(aead_tdata.auth_tag.data, tdata->tag,
+		tdata->tag_size >> 3);
+
+	if (op == RTE_CRYPTO_CIPHER_OP_ENCRYPT)
+		return test_authenticated_encryption_helper(&aead_tdata, false);
+	else
+		return test_authenticated_decryption_helper(&aead_tdata, false);
+}
+
+
+static int test_case_NEA_encrypt(const void *tdata)
+{
+	return test_NEA_helper(tdata, RTE_CRYPTO_CIPHER_OP_ENCRYPT);
+}
+
+static int test_case_NEA_decrypt(const void *tdata)
+{
+	return test_NEA_helper(tdata, RTE_CRYPTO_CIPHER_OP_DECRYPT);
+}
+
+static struct unit_test_suite cryptodev_256_NEA4_testsuite  = {
+	.suite_name = "256 NEA4 (SNOW 5G) Test Suite",
+	.setup = nea_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea4_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea4_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea4_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea4_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea4_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea4_test_3),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NEA5_testsuite  = {
+	.suite_name = "256 NEA5 (AES 256) Test Suite",
+	.setup = nea_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea5_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea5_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea5_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea5_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea5_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea5_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea5_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea5_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea5_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea5_test_5),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NEA6_testsuite  = {
+	.suite_name = "256 NEA6 (ZUC 256) Test Suite",
+	.setup = nea_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_encrypt, &nea6_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NEA_decrypt, &nea6_test_7),
+
+		TEST_CASES_END()
+	}
+};
+
+
+static struct unit_test_suite cryptodev_256_NIA4_testsuite  = {
+	.suite_name = "256 NIA4 (SNOW 5G) Test Suite",
+	.setup = nia_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia4_test_7),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NIA5_testsuite  = {
+	.suite_name = "256 NIA5 (AES 256) Test Suite",
+	.setup = nia_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia5_test_7),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NIA6_testsuite  = {
+	.suite_name = "256 NIA6 (ZUC 256) Test Suite",
+	.setup = nia_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_NIA_helper, &nia6_test_7),
+
+		TEST_CASES_END()
+	}
+};
+
+
+static int test_case_NCA_encrypt(const void *tdata)
+{
+	return test_NCA_helper(tdata, RTE_CRYPTO_CIPHER_OP_ENCRYPT);
+}
+
+static int test_case_NCA_decrypt(const void *tdata)
+{
+	return test_NCA_helper(tdata, RTE_CRYPTO_CIPHER_OP_DECRYPT);
+}
+
+static struct unit_test_suite cryptodev_256_NCA4_testsuite  = {
+	.suite_name = "256 NCA4 (SNOW 5G) Test Suite",
+	.setup = nca_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca4_test_10),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca4_test_10),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NCA5_testsuite  = {
+	.suite_name = "256 NCA5 (AES 256) Test Suite",
+	.setup = nca_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca5_test_10),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca5_test_10),
+
+		TEST_CASES_END()
+	}
+};
+
+static struct unit_test_suite cryptodev_256_NCA6_testsuite  = {
+	.suite_name = "256 NCA6 (ZUC 256) Test Suite",
+	.setup = nca_testsuite_setup,
+	.unit_test_cases = {
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_1),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_2),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_3),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_4),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_5),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_6),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_7),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_8),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_9),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_encrypt, &nca6_test_10),
+		TEST_CASE_WITH_DATA(ut_setup, ut_teardown,
+			test_case_NCA_decrypt, &nca6_test_10),
+
+		TEST_CASES_END()
+	}
+};
+
+static int
 run_cryptodev_testsuite(const char *pmd_name)
 {
 	uint8_t ret, j, i = 0, blk_start_idx = 0;
@@ -19864,6 +20481,15 @@ run_cryptodev_testsuite(const char *pmd_name)
 		&cryptodev_negative_hmac_sha1_testsuite,
 		&cryptodev_gen_testsuite,
 		&cryptodev_sm4_gcm_testsuite,
+		&cryptodev_256_NEA4_testsuite,
+		&cryptodev_256_NEA5_testsuite,
+		&cryptodev_256_NEA6_testsuite,
+		&cryptodev_256_NIA4_testsuite,
+		&cryptodev_256_NIA5_testsuite,
+		&cryptodev_256_NIA6_testsuite,
+		&cryptodev_256_NCA4_testsuite,
+		&cryptodev_256_NCA5_testsuite,
+		&cryptodev_256_NCA6_testsuite,
 #ifdef RTE_LIB_SECURITY
 		&ipsec_proto_testsuite,
 		&pdcp_proto_testsuite,

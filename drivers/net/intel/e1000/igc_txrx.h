@@ -128,6 +128,15 @@ struct igc_tx_queue {
 	struct igc_advctx_info ctx_cache[IGC_CTX_NUM];
 	/**< Hardware context history.*/
 	uint64_t               offloads; /**< offloads of RTE_ETH_TX_OFFLOAD_* */
+
+	/**< Qbv cycle when the last first flag was marked. */
+	uint64_t               last_frst_flag;
+	/**< Qbv cycle when the last packet was transmitted. */
+	uint64_t               last_packet_cycle;
+	/**< Virtual address of dummy packet buffer for Qbv cycle dirtying. */
+	void                   *dummy_pkt_buf;
+	/**< DMA/physical address of dummy packet buffer for hardware access. */
+	rte_iova_t             dummy_pkt_dma;
 };
 
 /*
@@ -141,7 +150,7 @@ int eth_igc_rx_queue_setup(struct rte_eth_dev *dev, uint16_t rx_queue_id,
 		const struct rte_eth_rxconf *rx_conf,
 		struct rte_mempool *mb_pool);
 
-uint32_t eth_igc_rx_queue_count(void *rx_queue);
+int eth_igc_rx_queue_count(void *rx_queue);
 
 int eth_igc_rx_descriptor_status(void *rx_queue, uint16_t offset);
 

@@ -164,7 +164,7 @@ static int ixgbe_dev_allmulticast_disable(struct rte_eth_dev *dev);
 static int ixgbe_dev_link_update(struct rte_eth_dev *dev,
 				int wait_to_complete);
 static int ixgbe_dev_stats_get(struct rte_eth_dev *dev,
-				struct rte_eth_stats *stats);
+				struct rte_eth_stats *stats, struct eth_queue_stats *qstats);
 static int ixgbe_dev_xstats_get(struct rte_eth_dev *dev,
 				struct rte_eth_xstat *xstats, unsigned n);
 static int ixgbevf_dev_xstats_get(struct rte_eth_dev *dev,
@@ -265,7 +265,7 @@ static int  ixgbevf_dev_reset(struct rte_eth_dev *dev);
 static void ixgbevf_intr_disable(struct rte_eth_dev *dev);
 static void ixgbevf_intr_enable(struct rte_eth_dev *dev);
 static int ixgbevf_dev_stats_get(struct rte_eth_dev *dev,
-		struct rte_eth_stats *stats);
+		struct rte_eth_stats *stats, struct eth_queue_stats *qstats);
 static int ixgbevf_dev_stats_reset(struct rte_eth_dev *dev);
 static int ixgbevf_vlan_filter_set(struct rte_eth_dev *dev,
 		uint16_t vlan_id, int on);
@@ -911,7 +911,8 @@ ixgbe_dev_queue_stats_mapping_set(struct rte_eth_dev *eth_dev,
 		(hw->mac.type != ixgbe_mac_X540) &&
 		(hw->mac.type != ixgbe_mac_X550) &&
 		(hw->mac.type != ixgbe_mac_X550EM_x) &&
-		(hw->mac.type != ixgbe_mac_X550EM_a))
+		(hw->mac.type != ixgbe_mac_X550EM_a) &&
+		(hw->mac.type != ixgbe_mac_E610))
 		return -ENOSYS;
 
 	PMD_INIT_LOG(DEBUG, "Setting port %d, %s queue_id %d to stat index %d",
@@ -2134,10 +2135,11 @@ ixgbe_vlan_hw_extend_enable(struct rte_eth_dev *dev)
 	ctrl |= IXGBE_EXTENDED_VLAN;
 	IXGBE_WRITE_REG(hw, IXGBE_CTRL_EXT, ctrl);
 
-	/* Clear pooling mode of PFVTCTL. It's required by X550. */
+	/* Clear pooling mode of PFVTCTL. It's required by X550 and E610. */
 	if (hw->mac.type == ixgbe_mac_X550 ||
 	    hw->mac.type == ixgbe_mac_X550EM_x ||
-	    hw->mac.type == ixgbe_mac_X550EM_a) {
+	    hw->mac.type == ixgbe_mac_X550EM_a ||
+	    hw->mac.type == ixgbe_mac_E610) {
 		ctrl = IXGBE_READ_REG(hw, IXGBE_VT_CTL);
 		ctrl &= ~IXGBE_VT_CTL_POOLING_MODE_MASK;
 		IXGBE_WRITE_REG(hw, IXGBE_VT_CTL, ctrl);
@@ -2797,6 +2799,11 @@ ixgbe_dev_start(struct rte_eth_dev *dev)
 			allowed_speeds = RTE_ETH_LINK_SPEED_10M |
 				RTE_ETH_LINK_SPEED_100M | RTE_ETH_LINK_SPEED_1G;
 		break;
+	case ixgbe_mac_E610:
+		allowed_speeds = RTE_ETH_LINK_SPEED_100M | RTE_ETH_LINK_SPEED_1G |
+			RTE_ETH_LINK_SPEED_2_5G | RTE_ETH_LINK_SPEED_5G |
+			RTE_ETH_LINK_SPEED_10G;
+		break;
 	default:
 		allowed_speeds = RTE_ETH_LINK_SPEED_100M | RTE_ETH_LINK_SPEED_1G |
 			RTE_ETH_LINK_SPEED_10G;
@@ -2825,6 +2832,7 @@ ixgbe_dev_start(struct rte_eth_dev *dev)
 		case ixgbe_mac_X550:
 		case ixgbe_mac_X550EM_x:
 		case ixgbe_mac_X550EM_a:
+		case ixgbe_mac_E610:
 			speed = IXGBE_LINK_SPEED_X550_AUTONEG;
 			break;
 		default:
@@ -3398,7 +3406,8 @@ ixgbe_read_stats_registers(struct ixgbe_hw *hw,
  * This function is based on ixgbe_update_stats_counters() in ixgbe/ixgbe.c
  */
 static int
-ixgbe_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+ixgbe_dev_stats_get(struct rte_eth_dev *dev,
+		struct rte_eth_stats *stats, struct eth_queue_stats *qstats)
 {
 	struct ixgbe_hw *hw =
 			IXGBE_DEV_PRIVATE_TO_HW(dev->data->dev_private);
@@ -3427,13 +3436,15 @@ ixgbe_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
 	stats->opackets = hw_stats->gptc;
 	stats->obytes = hw_stats->gotc;
 
-	for (i = 0; i < RTE_MIN_T(IXGBE_QUEUE_STAT_COUNTERS,
-			RTE_ETHDEV_QUEUE_STAT_CNTRS, typeof(i)); i++) {
-		stats->q_ipackets[i] = hw_stats->qprc[i];
-		stats->q_opackets[i] = hw_stats->qptc[i];
-		stats->q_ibytes[i] = hw_stats->qbrc[i];
-		stats->q_obytes[i] = hw_stats->qbtc[i];
-		stats->q_errors[i] = hw_stats->qprdc[i];
+	if (qstats != NULL) {
+		for (i = 0; i < RTE_MIN_T(IXGBE_QUEUE_STAT_COUNTERS,
+				RTE_ETHDEV_QUEUE_STAT_CNTRS, typeof(i)); i++) {
+			qstats->q_ipackets[i] = hw_stats->qprc[i];
+			qstats->q_opackets[i] = hw_stats->qptc[i];
+			qstats->q_ibytes[i] = hw_stats->qbrc[i];
+			qstats->q_obytes[i] = hw_stats->qbtc[i];
+			qstats->q_errors[i] = hw_stats->qprdc[i];
+		}
 	}
 
 	/* Rx Errors */
@@ -3468,7 +3479,7 @@ ixgbe_dev_stats_reset(struct rte_eth_dev *dev)
 			IXGBE_DEV_PRIVATE_TO_STATS(dev->data->dev_private);
 
 	/* HW registers are cleared on read */
-	ixgbe_dev_stats_get(dev, NULL);
+	ixgbe_dev_stats_get(dev, NULL, NULL);
 
 	/* Reset software totals */
 	memset(stats, 0, sizeof(*stats));
@@ -3887,7 +3898,8 @@ ixgbevf_dev_xstats_get(struct rte_eth_dev *dev, struct rte_eth_xstat *xstats,
 }
 
 static int
-ixgbevf_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+ixgbevf_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		struct eth_queue_stats *qstats __rte_unused)
 {
 	struct ixgbevf_hw_stats *hw_stats = (struct ixgbevf_hw_stats *)
 			  IXGBE_DEV_PRIVATE_TO_STATS(dev->data->dev_private);
@@ -3911,7 +3923,7 @@ ixgbevf_dev_stats_reset(struct rte_eth_dev *dev)
 			IXGBE_DEV_PRIVATE_TO_STATS(dev->data->dev_private);
 
 	/* Sync HW register to the last stats */
-	ixgbevf_dev_stats_get(dev, NULL);
+	ixgbevf_dev_stats_get(dev, NULL, NULL);
 
 	/* reset HW current stats*/
 	hw_stats->vfgprc = 0;
@@ -4037,10 +4049,11 @@ ixgbe_dev_info_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *dev_info)
 	if (hw->mac.type == ixgbe_mac_X540 ||
 	    hw->mac.type == ixgbe_mac_X540_vf ||
 	    hw->mac.type == ixgbe_mac_X550 ||
-	    hw->mac.type == ixgbe_mac_X550_vf) {
+	    hw->mac.type == ixgbe_mac_X550_vf ||
+	    hw->mac.type == ixgbe_mac_E610) {
 		dev_info->speed_capa |= RTE_ETH_LINK_SPEED_100M;
 	}
-	if (hw->mac.type == ixgbe_mac_X550) {
+	if (hw->mac.type == ixgbe_mac_X550 || hw->mac.type == ixgbe_mac_E610) {
 		dev_info->speed_capa |= RTE_ETH_LINK_SPEED_2_5G;
 		dev_info->speed_capa |= RTE_ETH_LINK_SPEED_5G;
 	}
@@ -7656,7 +7669,8 @@ ixgbe_update_e_tag_eth_type(struct ixgbe_hw *hw,
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
-	    hw->mac.type != ixgbe_mac_X550EM_a) {
+	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610) {
 		return -ENOTSUP;
 	}
 
@@ -7677,7 +7691,8 @@ ixgbe_e_tag_enable(struct ixgbe_hw *hw)
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
-	    hw->mac.type != ixgbe_mac_X550EM_a) {
+	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610) {
 		return -ENOTSUP;
 	}
 
@@ -7700,7 +7715,8 @@ ixgbe_e_tag_filter_del(struct rte_eth_dev *dev,
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
-	    hw->mac.type != ixgbe_mac_X550EM_a) {
+	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610) {
 		return -ENOTSUP;
 	}
 
@@ -7736,7 +7752,8 @@ ixgbe_e_tag_filter_add(struct rte_eth_dev *dev,
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
-	    hw->mac.type != ixgbe_mac_X550EM_a) {
+	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610) {
 		return -ENOTSUP;
 	}
 
@@ -7923,7 +7940,8 @@ ixgbe_e_tag_forwarding_en_dis(struct rte_eth_dev *dev, bool en)
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 	    hw->mac.type != ixgbe_mac_X550EM_x &&
-	    hw->mac.type != ixgbe_mac_X550EM_a) {
+	    hw->mac.type != ixgbe_mac_X550EM_a &&
+	    hw->mac.type != ixgbe_mac_E610) {
 		return -ENOTSUP;
 	}
 

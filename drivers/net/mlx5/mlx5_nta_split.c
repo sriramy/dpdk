@@ -277,7 +277,7 @@ mlx5_flow_nta_split_resource_free(struct rte_eth_dev *dev,
  * are different, and the action used to copy the metadata is also different.
  */
 struct mlx5_list_entry *
-flow_nta_mreg_create_cb(void *tool_ctx, void *cb_ctx)
+mlx5_flow_nta_mreg_create_cb(void *tool_ctx, void *cb_ctx)
 {
 	struct rte_eth_dev *dev = tool_ctx;
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -345,8 +345,8 @@ flow_nta_mreg_create_cb(void *tool_ctx, void *cb_ctx)
 	/* (match REG 'tag') or all. */
 	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 	/* (Mark) or void + copy to Rx meta + jump to the MREG_ACT_TABLE_GROUP. */
-	actions[1].type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
-	actions[1].conf = &rx_meta,
+	actions[1].type = RTE_FLOW_ACTION_TYPE_MODIFY_FIELD;
+	actions[1].conf = &rx_meta;
 	actions[2].type = RTE_FLOW_ACTION_TYPE_JUMP;
 	actions[2].conf = &jump;
 	actions[3].type = RTE_FLOW_ACTION_TYPE_END;
@@ -374,7 +374,7 @@ flow_nta_mreg_create_cb(void *tool_ctx, void *cb_ctx)
 }
 
 void
-flow_nta_mreg_remove_cb(void *tool_ctx, struct mlx5_list_entry *entry)
+mlx5_flow_nta_mreg_remove_cb(void *tool_ctx, struct mlx5_list_entry *entry)
 {
 	struct mlx5_flow_mreg_copy_resource *mcp_res =
 			       container_of(entry, typeof(*mcp_res), hlist_ent);

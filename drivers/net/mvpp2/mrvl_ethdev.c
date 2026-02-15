@@ -1486,7 +1486,8 @@ mrvl_mac_addr_set(struct rte_eth_dev *dev, struct rte_ether_addr *mac_addr)
  *   0 on success, negative error value otherwise.
  */
 static int
-mrvl_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+mrvl_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+	       struct eth_queue_stats *qstats)
 {
 	struct mrvl_priv *priv = dev->data->dev_private;
 	struct pp2_ppio_statistics ppio_stats;
@@ -1521,12 +1522,14 @@ mrvl_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
 			break;
 		}
 
-		stats->q_ibytes[idx] = rxq->bytes_recv;
-		stats->q_ipackets[idx] = rx_stats.enq_desc - rxq->drop_mac;
-		stats->q_errors[idx] = rx_stats.drop_early +
-				       rx_stats.drop_fullq +
-				       rx_stats.drop_bm +
-				       rxq->drop_mac;
+		if (qstats != NULL) {
+			qstats->q_ibytes[idx] = rxq->bytes_recv;
+			qstats->q_ipackets[idx] = rx_stats.enq_desc - rxq->drop_mac;
+			qstats->q_errors[idx] = rx_stats.drop_early +
+					       rx_stats.drop_fullq +
+					       rx_stats.drop_bm +
+					       rxq->drop_mac;
+		}
 		stats->ibytes += rxq->bytes_recv;
 		drop_mac += rxq->drop_mac;
 	}
@@ -1553,8 +1556,10 @@ mrvl_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
 			break;
 		}
 
-		stats->q_opackets[idx] = tx_stats.deq_desc;
-		stats->q_obytes[idx] = txq->bytes_sent;
+		if (qstats != NULL) {
+			qstats->q_opackets[idx] = tx_stats.deq_desc;
+			qstats->q_obytes[idx] = txq->bytes_sent;
+		}
 		stats->obytes += txq->bytes_sent;
 	}
 
@@ -2668,7 +2673,6 @@ mrvl_rx_pkt_burst(void *rxq, struct rte_mbuf **rx_pkts, uint16_t nb_pkts)
 			     (!rx_done && num < q->priv->bpool_init_size))) {
 			mrvl_fill_bpool(q, q->priv->fill_bpool_buffs);
 		} else if (unlikely(num > q->priv->bpool_max_size)) {
-			int i;
 			int pkt_to_remove = num - q->priv->bpool_init_size;
 			struct rte_mbuf *mbuf;
 			struct pp2_buff_inf buff;

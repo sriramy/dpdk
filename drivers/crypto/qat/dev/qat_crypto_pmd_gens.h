@@ -430,7 +430,8 @@ static __rte_always_inline int32_t
 qat_sym_build_req_set_data(struct icp_qat_fw_la_bulk_req *req,
 		void *opaque, struct qat_sym_op_cookie *cookie,
 		struct rte_crypto_vec *src_vec, uint16_t n_src,
-		struct rte_crypto_vec *dst_vec, uint16_t n_dst)
+		struct rte_crypto_vec *dst_vec, uint16_t n_dst,
+		union rte_crypto_sym_ofs *ofs, struct rte_crypto_op *op)
 {
 	struct qat_sgl *list;
 	uint32_t i;
@@ -441,6 +442,21 @@ qat_sym_build_req_set_data(struct icp_qat_fw_la_bulk_req *req,
 	if (unlikely(n_src < 1 || n_src > QAT_SYM_SGL_MAX_NUMBER ||
 			n_dst > QAT_SYM_SGL_MAX_NUMBER))
 		return -1;
+
+	/* For crypto API only: try to align the in-place buffers*/
+	if (op != NULL && likely(n_dst == 0) && likely(!is_sgl)) {
+		rte_iova_t offset = src_vec[0].iova & RTE_CACHE_LINE_MASK;
+		if (offset) {
+			rte_iova_t buff_addr = rte_mbuf_iova_get(op->sym->m_src);
+			/* make sure src_data_start is still within the buffer */
+			if (src_vec[0].iova - offset >= buff_addr) {
+				src_vec[0].iova -= offset;
+				src_vec[0].len += offset;
+				ofs->ofs.auth.head += offset;
+				ofs->ofs.cipher.head += offset;
+			}
+		}
+	}
 
 	if (likely(!is_sgl)) {
 		src_data_start = src_vec[0].iova;

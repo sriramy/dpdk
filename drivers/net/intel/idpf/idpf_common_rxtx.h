@@ -11,6 +11,7 @@
 
 #include "idpf_common_device.h"
 #include "../common/tx.h"
+#include "../common/rx.h"
 
 #define IDPF_RX_MAX_BURST		32
 
@@ -38,13 +39,8 @@
 #define IDPF_RLAN_CTX_DBUF_S	7
 #define IDPF_RX_MAX_DATA_BUF_SIZE	(16 * 1024 - 128)
 
-#define IDPF_TX_CKSUM_OFFLOAD_MASK (		\
-		RTE_MBUF_F_TX_IP_CKSUM |	\
-		RTE_MBUF_F_TX_L4_MASK |		\
-		RTE_MBUF_F_TX_TCP_SEG)
-
 #define IDPF_TX_OFFLOAD_MASK (			\
-		IDPF_TX_CKSUM_OFFLOAD_MASK |	\
+		CI_TX_CKSUM_OFFLOAD_MASK |	\
 		RTE_MBUF_F_TX_IPV4 |		\
 		RTE_MBUF_F_TX_IPV6)
 
@@ -95,6 +91,26 @@
 
 #define IDPF_RX_SPLIT_BUFQ1_ID	1
 #define IDPF_RX_SPLIT_BUFQ2_ID	2
+
+#define IDPF_RX_SCALAR_OFFLOADS (			\
+		RTE_ETH_RX_OFFLOAD_IPV4_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_UDP_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_TCP_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_TIMESTAMP | \
+		RTE_ETH_RX_OFFLOAD_SCATTER)
+#define IDPF_RX_VECTOR_OFFLOADS 0
+
+#define IDPF_TX_SCALAR_OFFLOADS (		\
+		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_TCP_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_TCP_TSO |	\
+		RTE_ETH_TX_OFFLOAD_MULTI_SEGS |	\
+		RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE)
+
+#define IDPF_TX_VECTOR_OFFLOADS RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE
 
 struct idpf_rx_stats {
 	RTE_ATOMIC(uint64_t) mbuf_alloc_failed;
@@ -148,20 +164,8 @@ struct idpf_rx_queue {
 	uint32_t hw_register_set;
 };
 
-/* Offload features */
-union idpf_tx_offload {
-	uint64_t data;
-	struct {
-		uint64_t l2_len:7; /* L2 (MAC) Header Length. */
-		uint64_t l3_len:9; /* L3 (IP) Header Length. */
-		uint64_t l4_len:8; /* L4 Header Length. */
-		uint64_t tso_segsz:16; /* TCP TSO segment size */
-		/* uint64_t unused : 24; */
-	};
-};
-
 union idpf_tx_desc {
-	struct idpf_base_tx_desc *tx_ring;
+	struct ci_tx_desc *tx_ring;
 	struct idpf_flex_tx_sched_desc *desc_ring;
 	struct idpf_splitq_tx_compl_desc *compl_ring;
 };
@@ -217,6 +221,9 @@ __rte_internal
 uint16_t idpf_dp_singleq_xmit_pkts(void *tx_queue, struct rte_mbuf **tx_pkts,
 				   uint16_t nb_pkts);
 __rte_internal
+uint16_t idpf_dp_singleq_xmit_pkts_simple(void *tx_queue, struct rte_mbuf **tx_pkts,
+				   uint16_t nb_pkts);
+__rte_internal
 uint16_t idpf_dp_prep_pkts(void *tx_queue, struct rte_mbuf **tx_pkts,
 			   uint16_t nb_pkts);
 __rte_internal
@@ -252,5 +259,8 @@ __rte_internal
 uint16_t idpf_dp_singleq_xmit_pkts_avx2(void *tx_queue,
 					struct rte_mbuf **tx_pkts,
 					uint16_t nb_pkts);
+
+extern const struct ci_rx_path_info idpf_rx_path_infos[IDPF_RX_MAX];
+extern const struct ci_tx_path_info idpf_tx_path_infos[IDPF_TX_MAX];
 
 #endif /* _IDPF_COMMON_RXTX_H_ */

@@ -795,7 +795,7 @@ mlx5_ibv_drop_action_create(struct rte_eth_dev *dev)
 			.rx_hash_conf = (struct ibv_rx_hash_conf){
 				.rx_hash_function = IBV_RX_HASH_FUNC_TOEPLITZ,
 				.rx_hash_key_len = MLX5_RSS_HASH_KEY_LEN,
-				.rx_hash_key = rss_hash_default_key,
+				.rx_hash_key = mlx5_rss_hash_default_key,
 				.rx_hash_fields_mask = 0,
 				},
 			.rwq_ind_tbl = ind_tbl,
@@ -883,7 +883,7 @@ mlx5_txq_ibv_qp_create(struct rte_eth_dev *dev, uint16_t idx)
 	 * dev_cap.max_sge limit and will still work properly.
 	 */
 	qp_attr.cap.max_send_sge = 1;
-	qp_attr.qp_type = IBV_QPT_RAW_PACKET,
+	qp_attr.qp_type = IBV_QPT_RAW_PACKET;
 	/* Do *NOT* enable this, completions events are managed per Tx burst. */
 	qp_attr.sq_sig_all = 0;
 	qp_attr.pd = priv->sh->cdev->pd;
@@ -1225,7 +1225,7 @@ mlx5_txq_ibv_obj_release(struct mlx5_txq_obj *txq_obj)
 	claim_zero(mlx5_glue->destroy_cq(txq_obj->cq));
 }
 
-struct mlx5_obj_ops ibv_obj_ops = {
+struct mlx5_obj_ops mlx5_ibv_obj_ops = {
 	.rxq_obj_modify_vlan_strip = mlx5_rxq_obj_modify_wq_vlan_strip,
 	.rxq_obj_new = mlx5_rxq_ibv_obj_new,
 	.rxq_event_get = mlx5_rx_ibv_get_event,

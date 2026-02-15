@@ -35,7 +35,7 @@
 
 
 /* Default RSS hash key also used for ConnectX-3. */
-uint8_t rss_hash_default_key[] = {
+uint8_t mlx5_rss_hash_default_key[] = {
 	0x2c, 0xc6, 0x81, 0xd1,
 	0x5b, 0xdb, 0xf4, 0xf7,
 	0xfc, 0xa2, 0x83, 0x19,
@@ -50,7 +50,7 @@ uint8_t rss_hash_default_key[] = {
 
 /* Length of the default RSS hash key. */
 static_assert(MLX5_RSS_HASH_KEY_LEN ==
-	      (unsigned int)sizeof(rss_hash_default_key),
+	      (unsigned int)sizeof(mlx5_rss_hash_default_key),
 	      "wrong RSS default key size.");
 
 /**
@@ -245,7 +245,7 @@ error:
  *   0 on success, negative errno value on failure.
  */
 int
-rxq_alloc_elts(struct mlx5_rxq_ctrl *rxq_ctrl)
+mlx5_rxq_alloc_elts(struct mlx5_rxq_ctrl *rxq_ctrl)
 {
 	int ret = 0;
 
@@ -422,7 +422,7 @@ mlx5_rxq_releasable(struct rte_eth_dev *dev, uint16_t idx)
 
 /* Fetches and drops all SW-owned and error CQEs to synchronize CQ. */
 void
-rxq_sync_cq(struct mlx5_rxq_data *rxq)
+mlx5_rxq_sync_cq(struct mlx5_rxq_data *rxq)
 {
 	const uint16_t cqe_n = 1 << rxq->cqe_n;
 	const uint16_t cqe_mask = cqe_n - 1;
@@ -494,7 +494,7 @@ mlx5_rx_queue_stop_primary(struct rte_eth_dev *dev, uint16_t idx)
 		return ret;
 	}
 	/* Remove all processes CQEs. */
-	rxq_sync_cq(&rxq_ctrl->rxq);
+	mlx5_rxq_sync_cq(&rxq_ctrl->rxq);
 	/* Free all involved mbufs. */
 	rxq_free_elts(rxq_ctrl);
 	/* Set the actual queue state. */
@@ -573,7 +573,7 @@ mlx5_rx_queue_start_primary(struct rte_eth_dev *dev, uint16_t idx)
 	MLX5_ASSERT(rxq != NULL && rxq->ctrl != NULL);
 	MLX5_ASSERT(rte_eal_process_type() == RTE_PROC_PRIMARY);
 	/* Allocate needed buffers. */
-	ret = rxq_alloc_elts(rxq->ctrl);
+	ret = mlx5_rxq_alloc_elts(rxq->ctrl);
 	if (ret) {
 		DRV_LOG(ERR, "Cannot reallocate buffers for Rx WQ");
 		rte_errno = errno;
@@ -659,8 +659,6 @@ mlx5_rx_queue_pre_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t *desc,
 			struct mlx5_rxq_ctrl **rxq_ctrl)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_rxq_priv *rxq;
-	bool empty;
 
 	if (*desc > mlx5_dev_get_max_wq_size(priv->sh)) {
 		DRV_LOG(ERR,
@@ -699,14 +697,6 @@ mlx5_rx_queue_pre_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t *desc,
 		if ((*rxq_ctrl)->obj != NULL)
 			/* Some port using shared Rx queue has been started. */
 			return 0;
-		/* Release all owner RxQ to reconfigure Shared RxQ. */
-		do {
-			rxq = LIST_FIRST(&(*rxq_ctrl)->owners);
-			LIST_REMOVE(rxq, owner_entry);
-			empty = LIST_EMPTY(&(*rxq_ctrl)->owners);
-			mlx5_rxq_release(ETH_DEV(rxq->priv), rxq->idx);
-		} while (!empty);
-		*rxq_ctrl = NULL;
 	}
 	return 0;
 }
@@ -780,10 +770,21 @@ mlx5_shared_rxq_match(struct mlx5_rxq_ctrl *rxq_ctrl, struct rte_eth_dev *dev,
 			dev->data->port_id, idx);
 		return false;
 	}
-	if (priv->mtu != spriv->mtu) {
-		DRV_LOG(ERR, "port %u queue index %u failed to join shared group: mtu mismatch",
-			dev->data->port_id, idx);
-		return false;
+	if (dev->data->mtu != rxq_ctrl->mtu) {
+		/*
+		 * MTU mismatch is only a problem when the queue hasn't been started yet.
+		 * If rxq_ctrl->obj is NULL, the queue hardware objects haven't been created,
+		 * meaning we're in the initial configuration phase where MTU must match.
+		 * If obj != NULL, the queue is already running with its hardware configured,
+		 * and runtime MTU changes are safe as they only update software bookkeeping
+		 * without recreating hardware resources.
+		 */
+		if (rxq_ctrl->obj == NULL) {
+			DRV_LOG(DEBUG, "port %u queue index %u: mtu mismatch with existing shared rxq_ctrl "
+					"(port mtu=%u rxq_ctrl mtu=%u), reconfiguration needed",
+					dev->data->port_id, idx, dev->data->mtu, rxq_ctrl->mtu);
+			return false;
+		}
 	}
 	if (priv->dev_data->dev_conf.intr_conf.rxq !=
 	    spriv->dev_data->dev_conf.intr_conf.rxq) {
@@ -898,7 +899,7 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 			rte_errno = EINVAL;
 			return -rte_errno;
 		}
-		if (priv->obj_ops.rxq_obj_new != devx_obj_ops.rxq_obj_new) {
+		if (priv->obj_ops.rxq_obj_new != mlx5_devx_obj_ops.rxq_obj_new) {
 			DRV_LOG(ERR, "port %u queue index %u shared Rx queue needs DevX api",
 				     dev->data->port_id, idx);
 			rte_errno = EINVAL;
@@ -926,8 +927,57 @@ mlx5_rx_queue_setup(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		if (rxq_ctrl != NULL &&
 		    !mlx5_shared_rxq_match(rxq_ctrl, dev, idx, desc, socket,
 					   conf, mp)) {
-			rte_errno = EINVAL;
-			return -rte_errno;
+			struct mlx5_rxq_priv *rxq_tmp;
+			bool empty;
+
+			/*
+			 * Configuration mismatch detected with existing shared RXQ.
+			 * We need to reconfigure, but only if it's safe to do so.
+			 *
+			 * First check: If hardware objects are allocated, the shared queue has
+			 * been started. Reconfiguration would require destroying and recreating
+			 * hardware resources, which cannot be done while the queue is active.
+			 * Return EBUSY to force caller to stop the queue first.
+			 */
+			if (rxq_ctrl->obj != NULL) {
+				DRV_LOG(ERR, "port %u queue index %u: cannot reconfigure shared RXQ while started",
+					dev->data->port_id, idx);
+				rte_errno = EBUSY;
+				return -rte_errno;
+			}
+
+			/*
+			 * Second check: Even if hardware objects aren't allocated yet,
+			 * verify that no owner port is actively using this queue.
+			 * refcnt == 1 means the queue exists but is idle (only setup reference).
+			 * refcnt > 1 means the queue is being used by flows or other components.
+			 * This prevents releasing a queue that other ports depend on.
+			 */
+			LIST_FOREACH(rxq_tmp, &rxq_ctrl->owners, owner_entry) {
+				if (rxq_tmp->refcnt > 1) {
+					DRV_LOG(ERR, "port %u queue index %u: cannot reconfigure shared RXQ "
+						"while other ports are running",
+						dev->data->port_id, idx);
+					rte_errno = EBUSY;
+					return -rte_errno;
+				}
+			}
+
+			/*
+			 * Safe to reconfigure: hardware not started and no active users.
+			 * Release all owner ports from the existing shared rxq_ctrl.
+			 * This will decrement references and eventually free the old rxq_ctrl.
+			 * Setting rxq_ctrl to NULL triggers creation of a new one below with
+			 * the updated configuration.
+			 */
+			do {
+				rxq_tmp = LIST_FIRST(&rxq_ctrl->owners);
+				LIST_REMOVE(rxq_tmp, owner_entry);
+				empty = LIST_EMPTY(&rxq_ctrl->owners);
+				mlx5_rxq_release(ETH_DEV(rxq_tmp->priv), rxq_tmp->idx);
+			} while (!empty);
+
+			rxq_ctrl = NULL;
 		}
 	} else {
 		res = mlx5_rx_queue_pre_setup(dev, idx, &desc, &rxq_ctrl);
@@ -1813,6 +1863,11 @@ mlx5_rxq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 	LIST_INIT(&tmpl->owners);
 	MLX5_ASSERT(n_seg && n_seg <= MLX5_MAX_RXQ_NSEG);
 	/*
+	 * Save the current MTU to check against for shared rx queues.
+	 * Use dev->data->mtu which reflects the actual current MTU.
+	 */
+	tmpl->mtu = dev->data->mtu;
+	/*
 	 * Save the original segment configuration in the shared queue
 	 * descriptor for the later check on the sibling queue creation.
 	 */
@@ -2033,8 +2088,9 @@ mlx5_rxq_new(struct rte_eth_dev *dev, uint16_t idx, uint16_t desc,
 		tmpl->share_group = conf->share_group;
 		tmpl->share_qid = conf->share_qid;
 		LIST_INSERT_HEAD(&priv->sh->shared_rxqs, tmpl, share_entry);
+	} else {
+		LIST_INSERT_HEAD(&priv->rxqsctrl, tmpl, next);
 	}
-	LIST_INSERT_HEAD(&priv->rxqsctrl, tmpl, next);
 	rte_atomic_store_explicit(&tmpl->ctrl_ref, 1, rte_memory_order_relaxed);
 	return tmpl;
 error:
@@ -2211,7 +2267,8 @@ mlx5_ext_rxq_ref(struct rte_eth_dev *dev, uint16_t idx)
 {
 	struct mlx5_external_q *rxq = mlx5_ext_rxq_get(dev, idx);
 
-	rte_atomic_fetch_add_explicit(&rxq->refcnt, 1, rte_memory_order_relaxed);
+	if (rxq != NULL)
+		rte_atomic_fetch_add_explicit(&rxq->refcnt, 1, rte_memory_order_relaxed);
 	return rxq;
 }
 
@@ -2231,7 +2288,9 @@ mlx5_ext_rxq_deref(struct rte_eth_dev *dev, uint16_t idx)
 {
 	struct mlx5_external_q *rxq = mlx5_ext_rxq_get(dev, idx);
 
-	return rte_atomic_fetch_sub_explicit(&rxq->refcnt, 1, rte_memory_order_relaxed) - 1;
+	return rxq != NULL ?
+		rte_atomic_fetch_sub_explicit(&rxq->refcnt, 1, rte_memory_order_relaxed) - 1 :
+		UINT32_MAX;
 }
 
 /**
@@ -2250,8 +2309,8 @@ mlx5_ext_rxq_get(struct rte_eth_dev *dev, uint16_t idx)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
 
-	MLX5_ASSERT(mlx5_is_external_rxq(dev, idx));
-	return &priv->ext_rxqs[idx - RTE_PMD_MLX5_EXTERNAL_RX_QUEUE_ID_MIN];
+	return mlx5_is_external_rxq(dev, idx) ?
+		&priv->ext_rxqs[idx -  RTE_PMD_MLX5_EXTERNAL_RX_QUEUE_ID_MIN] : NULL;
 }
 
 /**
@@ -2365,7 +2424,8 @@ mlx5_rxq_release(struct rte_eth_dev *dev, uint16_t idx)
 					(&rxq_ctrl->rxq.mr_ctrl.cache_bh);
 			if (rxq_ctrl->rxq.shared)
 				LIST_REMOVE(rxq_ctrl, share_entry);
-			LIST_REMOVE(rxq_ctrl, next);
+			else
+				LIST_REMOVE(rxq_ctrl, next);
 			mlx5_free(rxq_ctrl->rxq.rq_win_data);
 			mlx5_free(rxq_ctrl);
 		}
@@ -2413,7 +2473,6 @@ int
 mlx5_ext_rxq_verify(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_external_q *rxq;
 	uint32_t i;
 	int ret = 0;
 
@@ -2421,8 +2480,9 @@ mlx5_ext_rxq_verify(struct rte_eth_dev *dev)
 		return 0;
 
 	for (i = RTE_PMD_MLX5_EXTERNAL_RX_QUEUE_ID_MIN; i <= UINT16_MAX ; ++i) {
-		rxq = mlx5_ext_rxq_get(dev, i);
-		if (rxq->refcnt < 2)
+		struct mlx5_external_q *rxq = mlx5_ext_rxq_get(dev, i);
+
+		if (rxq == NULL || rxq->refcnt < 2)
 			continue;
 		DRV_LOG(DEBUG, "Port %u external RxQ %u still referenced.",
 			dev->data->port_id, i);

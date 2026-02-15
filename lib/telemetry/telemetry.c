@@ -47,7 +47,7 @@ struct cmd_callback {
 struct socket {
 	int sock;
 	char path[sizeof(((struct sockaddr_un *)0)->sun_path)];
-	handler fn;
+	telemetry_sock_handler fn;
 	RTE_ATOMIC(uint16_t) *num_clients;
 };
 static struct socket v2_socket; /* socket for v2 telemetry */
@@ -365,7 +365,7 @@ output_json(const char *cmd, const struct rte_tel_data *d, int s)
 	used += prefix_used;
 	used += strlcat(out_buf + used, "}", sizeof(out_buf) - used);
 	if (write(s, out_buf, used) < 0)
-		perror("Error writing to socket");
+		TMTY_LOG_LINE(ERR, "Error writing to socket: %s", strerror(errno));
 }
 
 static void
@@ -384,7 +384,7 @@ perform_command(const struct cmd_callback *cb, const char *cmd, const char *para
 		int used = snprintf(out_buf, sizeof(out_buf), "{\"%.*s\":null}",
 				MAX_CMD_LEN, cmd ? cmd : "none");
 		if (write(s, out_buf, used) < 0)
-			perror("Error writing to socket");
+			TMTY_LOG_LINE(ERR, "Error writing to socket: %s", strerror(errno));
 		return;
 	}
 	output_json(cmd, &data, s);

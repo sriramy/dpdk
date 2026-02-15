@@ -399,22 +399,20 @@ reset_tx_queue(struct ci_tx_queue *txq)
 	}
 
 	txe = txq->sw_ring;
-	size = sizeof(struct ice_tx_desc) * txq->nb_tx_desc;
+	size = sizeof(struct ci_tx_desc) * txq->nb_tx_desc;
 	for (i = 0; i < size; i++)
-		((volatile char *)txq->ice_tx_ring)[i] = 0;
+		((volatile char *)txq->ci_tx_ring)[i] = 0;
 
 	prev = (uint16_t)(txq->nb_tx_desc - 1);
 	for (i = 0; i < txq->nb_tx_desc; i++) {
-		txq->ice_tx_ring[i].cmd_type_offset_bsz =
-			rte_cpu_to_le_64(IAVF_TX_DESC_DTYPE_DESC_DONE);
+		txq->ci_tx_ring[i].cmd_type_offset_bsz =
+			rte_cpu_to_le_64(CI_TX_DESC_DTYPE_DESC_DONE);
 		txe[i].mbuf =  NULL;
-		txe[i].last_id = i;
 		txe[prev].next_id = i;
 		prev = i;
 	}
 
 	txq->tx_tail = 0;
-	txq->nb_tx_used = 0;
 
 	txq->last_desc_cleaned = txq->nb_tx_desc - 1;
 	txq->nb_tx_free = txq->nb_tx_desc - 1;
@@ -1514,7 +1512,8 @@ ice_dcf_update_stats(struct virtchnl_eth_stats *oes,
 
 
 static int
-ice_dcf_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+ice_dcf_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		struct eth_queue_stats *qstats __rte_unused)
 {
 	struct ice_dcf_adapter *ad = dev->data->dev_private;
 	struct ice_dcf_hw *hw = &ad->real_hw;

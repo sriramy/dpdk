@@ -20,8 +20,7 @@ static struct rte_ml_dev_global ml_dev_globals = {
  * appended after the mempool structure (in private data).
  */
 struct rte_ml_op_pool_private {
-	uint16_t user_size;
-	/*< Size of private user data with each operation. */
+	uint16_t user_size; /* Size of private user data with each operation. */
 };
 
 RTE_EXPORT_INTERNAL_SYMBOL(rte_ml_dev_pmd_get_dev)
@@ -56,7 +55,7 @@ rte_ml_dev_pmd_allocate(const char *name, uint8_t socket_id)
 {
 	char mz_name[RTE_MEMZONE_NAMESIZE];
 	const struct rte_memzone *mz;
-	struct rte_ml_dev *dev;
+	struct rte_ml_dev *dev = NULL;
 	int16_t dev_id;
 
 	/* implicit initialization of library before adding first device */

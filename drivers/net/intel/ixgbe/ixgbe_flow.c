@@ -221,6 +221,16 @@ cons_parse_ntuple_filter(const struct rte_flow_attr *attr,
 	act = next_no_void_action(actions, NULL);
 	if (act->type == RTE_FLOW_ACTION_TYPE_SECURITY) {
 		const void *conf = act->conf;
+		const struct rte_flow_action_security *sec_act;
+		struct rte_security_session *session;
+		struct ip_spec spec;
+
+		if (conf == NULL) {
+			rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_ACTION_CONF,
+				act, "NULL security conf.");
+			return -rte_errno;
+		}
 		/* check if the next not void item is END */
 		act = next_no_void_action(actions, act);
 		if (act->type != RTE_FLOW_ACTION_TYPE_END) {
@@ -244,10 +254,33 @@ cons_parse_ntuple_filter(const struct rte_flow_attr *attr,
 			}
 			item = next_no_void_pattern(pattern, item);
 		}
+		if (item->spec == NULL) {
+			rte_flow_error_set(error, EINVAL,
+					RTE_FLOW_ERROR_TYPE_ITEM_SPEC, item,
+					"NULL IP pattern.");
+			return -rte_errno;
+		}
 
 		filter->proto = IPPROTO_ESP;
-		return ixgbe_crypto_add_ingress_sa_from_flow(conf, item->spec,
-					item->type == RTE_FLOW_ITEM_TYPE_IPV6);
+		sec_act = (const struct rte_flow_action_security *)conf;
+		spec.is_ipv6 = item->type == RTE_FLOW_ITEM_TYPE_IPV6;
+		if (spec.is_ipv6) {
+			const struct rte_flow_item_ipv6 *ipv6 = item->spec;
+			spec.spec.ipv6 = *ipv6;
+		} else {
+			const struct rte_flow_item_ipv4 *ipv4 = item->spec;
+			spec.spec.ipv4 = *ipv4;
+		}
+
+		/*
+		 * we get pointer to security session from security action,
+		 * which is const. however, we do need to act on the session, so
+		 * either we do some kind of pointer based lookup to get session
+		 * pointer internally (which quickly gets unwieldy for lots of
+		 * flows case), or we simply cast away constness.
+		 */
+		session = RTE_CAST_PTR(struct rte_security_session *, sec_act->security_session);
+		return ixgbe_crypto_add_ingress_sa_from_flow(session, &spec);
 	}
 #endif
 
@@ -1361,7 +1394,8 @@ ixgbe_parse_l2_tn_filter(struct rte_eth_dev *dev,
 
 	if (hw->mac.type != ixgbe_mac_X550 &&
 		hw->mac.type != ixgbe_mac_X550EM_x &&
-		hw->mac.type != ixgbe_mac_X550EM_a) {
+		hw->mac.type != ixgbe_mac_X550EM_a &&
+		hw->mac.type != ixgbe_mac_E610) {
 		memset(l2_tn_filter, 0, sizeof(struct ixgbe_l2_tunnel_conf));
 		rte_flow_error_set(error, EINVAL,
 			RTE_FLOW_ERROR_TYPE_ITEM,
@@ -2111,10 +2145,11 @@ ixgbe_parse_fdir_filter_normal(struct rte_eth_dev *dev,
 			return -rte_errno;
 		}
 
-		/* only x550 family only support sctp port */
+		/* only some mac types support sctp port */
 		if (hw->mac.type == ixgbe_mac_X550 ||
 		    hw->mac.type == ixgbe_mac_X550EM_x ||
-		    hw->mac.type == ixgbe_mac_X550EM_a) {
+		    hw->mac.type == ixgbe_mac_X550EM_a ||
+		    hw->mac.type == ixgbe_mac_E610) {
 			/**
 			 * Only care about src & dst ports,
 			 * others should be masked.
@@ -3060,8 +3095,12 @@ ixgbe_flow_create(struct rte_eth_dev *dev,
 
 #ifdef RTE_LIB_SECURITY
 	/* ESP flow not really a flow*/
-	if (ntuple_filter.proto == IPPROTO_ESP)
+	if (ntuple_filter.proto == IPPROTO_ESP) {
+		if (ret != 0)
+			goto out;
+		flow->is_security = true;
 		return flow;
+	}
 #endif
 
 	if (!ret) {
@@ -3348,6 +3387,12 @@ ixgbe_flow_destroy(struct rte_eth_dev *dev,
 		IXGBE_DEV_PRIVATE_TO_FDIR_INFO(dev->data->dev_private);
 	struct ixgbe_rss_conf_ele *rss_filter_ptr;
 
+	/* Special case for SECURITY flows */
+	if (flow->is_security) {
+		ret = 0;
+		goto free;
+	}
+
 	switch (filter_type) {
 	case RTE_ETH_FILTER_NTUPLE:
 		ntuple_filter_ptr = (struct ixgbe_ntuple_filter_ele *)
@@ -3440,6 +3485,7 @@ ixgbe_flow_destroy(struct rte_eth_dev *dev,
 		return ret;
 	}
 
+free:
 	TAILQ_FOREACH(ixgbe_flow_mem_ptr, &ixgbe_flow_list, entries) {
 		if (ixgbe_flow_mem_ptr->flow == pmd_flow) {
 			TAILQ_REMOVE(&ixgbe_flow_list,

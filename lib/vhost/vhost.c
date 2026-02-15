@@ -128,16 +128,8 @@ __vhost_iova_to_vva(struct virtio_net *dev, struct vhost_virtqueue *vq,
 static __rte_always_inline void
 vhost_set_bit(unsigned int nr, volatile uint8_t *addr)
 {
-#if defined(RTE_TOOLCHAIN_GCC) && (GCC_VERSION < 70100)
-	/*
-	 * __sync_ built-ins are deprecated, but rte_atomic_ ones
-	 * are sub-optimized in older GCC versions.
-	 */
-	__sync_fetch_and_or_1(addr, (1U << nr));
-#else
 	rte_atomic_fetch_or_explicit((volatile uint8_t __rte_atomic *)addr, (1U << nr),
 		rte_memory_order_relaxed);
-#endif
 }
 
 static __rte_always_inline void
@@ -207,17 +199,9 @@ __vhost_log_cache_sync(struct virtio_net *dev, struct vhost_virtqueue *vq)
 	for (i = 0; i < vq->log_cache_nb_elem; i++) {
 		struct log_cache_entry *elem = vq->log_cache + i;
 
-#if defined(RTE_TOOLCHAIN_GCC) && (GCC_VERSION < 70100)
-		/*
-		 * '__sync' builtins are deprecated, but 'rte_atomic' ones
-		 * are sub-optimized in older GCC versions.
-		 */
-		__sync_fetch_and_or(log_base + elem->offset, elem->val);
-#else
 		rte_atomic_fetch_or_explicit(
 			(unsigned long __rte_atomic *)(log_base + elem->offset),
 			elem->val, rte_memory_order_relaxed);
-#endif
 	}
 
 	rte_atomic_thread_fence(rte_memory_order_release);
@@ -2216,6 +2200,7 @@ rte_vhost_vring_stats_get_names(int vid, uint16_t queue_id,
 {
 	struct virtio_net *dev = get_device(vid);
 	unsigned int i;
+	int ret;
 
 	if (dev == NULL)
 		return -1;
@@ -2229,10 +2214,15 @@ rte_vhost_vring_stats_get_names(int vid, uint16_t queue_id,
 	if (name == NULL || size < VHOST_NB_VQ_STATS)
 		return VHOST_NB_VQ_STATS;
 
-	for (i = 0; i < VHOST_NB_VQ_STATS; i++)
-		snprintf(name[i].name, sizeof(name[i].name), "%s_q%u_%s",
-				(queue_id & 1) ? "rx" : "tx",
-				queue_id / 2, vhost_vq_stat_strings[i].name);
+	for (i = 0; i < VHOST_NB_VQ_STATS; i++) {
+		ret = snprintf(name[i].name, sizeof(name[i].name), "%s_q%u_%s",
+			(queue_id & 1) ? "rx" : "tx", queue_id / 2,
+			vhost_vq_stat_strings[i].name);
+		if (ret >= (int)sizeof(name[0].name))
+			VHOST_CONFIG_LOG("device", NOTICE, "truncated xstat '%s_q%u_%s'",
+				(queue_id & 1) ? "rx" : "tx", queue_id / 2,
+				vhost_vq_stat_strings[i].name);
+	}
 
 	return VHOST_NB_VQ_STATS;
 }

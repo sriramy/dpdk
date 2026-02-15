@@ -28,6 +28,7 @@
 #include <rte_malloc.h>
 #include <rte_memzone.h>
 #include <dev_driver.h>
+#include <eal_export.h>
 
 #include "iavf.h"
 #include "iavf_rxtx.h"
@@ -105,7 +106,7 @@ static int iavf_dev_info_get(struct rte_eth_dev *dev,
 static const uint32_t *iavf_dev_supported_ptypes_get(struct rte_eth_dev *dev,
 						     size_t *no_of_elements);
 static int iavf_dev_stats_get(struct rte_eth_dev *dev,
-			     struct rte_eth_stats *stats);
+			     struct rte_eth_stats *stats, struct eth_queue_stats *qstats);
 static int iavf_dev_stats_reset(struct rte_eth_dev *dev);
 static int iavf_dev_xstats_reset(struct rte_eth_dev *dev);
 static int iavf_dev_xstats_get(struct rte_eth_dev *dev,
@@ -622,7 +623,7 @@ iavf_dev_vlan_insert_set(struct rte_eth_dev *dev)
 		return 0;
 
 	enable = !!(dev->data->dev_conf.txmode.offloads &
-		    RTE_ETH_TX_OFFLOAD_VLAN_INSERT);
+		    (RTE_ETH_TX_OFFLOAD_VLAN_INSERT | RTE_ETH_TX_OFFLOAD_QINQ_INSERT));
 	iavf_config_vlan_insert_v2(adapter, enable);
 
 	return 0;
@@ -665,11 +666,8 @@ iavf_dev_configure(struct rte_eth_dev *dev)
 		return -EIO;
 
 	ad->rx_bulk_alloc_allowed = true;
-	/* Initialize to TRUE. If any of Rx queues doesn't meet the
-	 * vector Rx/Tx preconditions, it will be reset.
-	 */
-	ad->rx_vec_allowed = true;
-	ad->tx_vec_allowed = true;
+
+	ad->tx_func_type = IAVF_TX_DEFAULT;
 
 	if (dev->data->dev_conf.rxmode.mq_mode & RTE_ETH_MQ_RX_RSS_FLAG)
 		dev->data->dev_conf.rxmode.offloads |= RTE_ETH_RX_OFFLOAD_RSS_HASH;
@@ -1126,12 +1124,18 @@ iavf_dev_info_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *dev_info)
 	struct iavf_adapter *adapter =
 		IAVF_DEV_PRIVATE_TO_ADAPTER(dev->data->dev_private);
 	struct iavf_info *vf = &adapter->vf;
+	uint16_t max_queue_pairs;
 
 	if (adapter->closed)
 		return -EIO;
 
-	dev_info->max_rx_queues = IAVF_MAX_NUM_QUEUES_LV;
-	dev_info->max_tx_queues = IAVF_MAX_NUM_QUEUES_LV;
+	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_LARGE_NUM_QPAIRS)
+		max_queue_pairs = IAVF_MAX_NUM_QUEUES_LV;
+	else
+		max_queue_pairs = IAVF_MAX_NUM_QUEUES_DFLT;
+
+	dev_info->max_rx_queues = max_queue_pairs;
+	dev_info->max_tx_queues = max_queue_pairs;
 	dev_info->min_rx_bufsize = IAVF_BUF_SIZE_MIN;
 	dev_info->max_rx_pktlen = IAVF_FRAME_SIZE_MAX;
 	dev_info->max_mtu = dev_info->max_rx_pktlen - IAVF_ETH_OVERHEAD;
@@ -1157,7 +1161,6 @@ iavf_dev_info_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *dev_info)
 
 	dev_info->tx_offload_capa =
 		RTE_ETH_TX_OFFLOAD_VLAN_INSERT |
-		RTE_ETH_TX_OFFLOAD_QINQ_INSERT |
 		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |
 		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |
 		RTE_ETH_TX_OFFLOAD_TCP_CKSUM |
@@ -1178,8 +1181,14 @@ iavf_dev_info_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *dev_info)
 	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_OFFLOAD_CRC)
 		dev_info->rx_offload_capa |= RTE_ETH_RX_OFFLOAD_KEEP_CRC;
 
-	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_CAP_PTP)
+	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_CAP_PTP &&
+	    vf->ptp_caps & VIRTCHNL_1588_PTP_CAP_RX_TSTAMP)
 		dev_info->rx_offload_capa |= RTE_ETH_RX_OFFLOAD_TIMESTAMP;
+
+	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_OFFLOAD_VLAN_V2 &&
+			vf->vlan_v2_caps.offloads.insertion_support.inner &&
+			vf->vlan_v2_caps.offloads.insertion_support.outer)
+		dev_info->tx_offload_capa |= RTE_ETH_TX_OFFLOAD_QINQ_INSERT;
 
 	if (iavf_ipsec_crypto_supported(adapter)) {
 		dev_info->rx_offload_capa |= RTE_ETH_RX_OFFLOAD_SECURITY;
@@ -1795,7 +1804,8 @@ iavf_update_stats(struct iavf_vsi *vsi, struct virtchnl_eth_stats *nes)
 }
 
 static int
-iavf_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+iavf_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		struct eth_queue_stats *qstats __rte_unused)
 {
 	struct iavf_adapter *adapter =
 		IAVF_DEV_PRIVATE_TO_ADAPTER(dev->data->dev_private);
@@ -2790,8 +2800,7 @@ iavf_dev_init(struct rte_eth_dev *eth_dev)
 	eth_dev->tx_pkt_prepare = &iavf_prep_pkts;
 
 	/* For secondary processes, we don't initialise any further as primary
-	 * has already done this work. Only check if we need a different RX
-	 * and TX function.
+	 * has already done this work.
 	 */
 	if (rte_eal_process_type() != RTE_PROC_PRIMARY) {
 		iavf_set_rx_function(eth_dev);
@@ -2877,6 +2886,14 @@ iavf_dev_init(struct rte_eth_dev *eth_dev)
 		ret = iavf_security_init(adapter);
 		if (ret) {
 			PMD_INIT_LOG(ERR, "failed to initialized ipsec crypto resources");
+			goto security_init_err;
+		}
+	}
+
+	/* Get PTP caps early to verify device capabilities */
+	if (vf->vf_res->vf_cap_flags & VIRTCHNL_VF_CAP_PTP) {
+		if (iavf_get_ptp_cap(adapter)) {
+			PMD_INIT_LOG(ERR, "Failed to get ptp capability");
 			goto security_init_err;
 		}
 	}
@@ -3093,22 +3110,31 @@ iavf_is_reset_detected(struct iavf_adapter *adapter)
  * Handle hardware reset
  */
 void
-iavf_handle_hw_reset(struct rte_eth_dev *dev)
+iavf_handle_hw_reset(struct rte_eth_dev *dev, bool vf_initiated_reset)
 {
 	struct iavf_info *vf = IAVF_DEV_PRIVATE_TO_VF(dev->data->dev_private);
 	struct iavf_adapter *adapter = dev->data->dev_private;
 	int ret;
+	bool restart_device = false;
 
-	if (!dev->data->dev_started)
-		return;
+	if (vf_initiated_reset) {
+		restart_device = dev->data->dev_started;
+	} else {
+		if (!dev->data->dev_started)
+			return;
 
-	if (!iavf_is_reset_detected(adapter)) {
-		PMD_DRV_LOG(DEBUG, "reset not start");
-		return;
+		if (!iavf_is_reset_detected(adapter)) {
+			PMD_DRV_LOG(DEBUG, "reset not start");
+			return;
+		}
 	}
 
 	vf->in_reset_recovery = true;
 	iavf_set_no_poll(adapter, false);
+
+	/* Call the pre reset callback */
+	if (vf->pre_reset_cb != NULL)
+		vf->pre_reset_cb(dev->data->port_id, vf->pre_reset_cb_arg);
 
 	ret = iavf_dev_reset(dev);
 	if (ret)
@@ -3121,21 +3147,132 @@ iavf_handle_hw_reset(struct rte_eth_dev *dev)
 
 	iavf_dev_xstats_reset(dev);
 
-	/* start the device */
-	ret = iavf_dev_start(dev);
-	if (ret)
-		goto error;
+	if (!vf_initiated_reset || restart_device) {
+		/* start the device */
+		ret = iavf_dev_start(dev);
+		if (ret)
+			goto error;
 
-	dev->data->dev_started = 1;
+		dev->data->dev_started = 1;
+	}
 	goto exit;
 
 error:
 	PMD_DRV_LOG(DEBUG, "RESET recover with error code=%dn", ret);
 exit:
+	/* Call the post reset callback */
+	if (vf->post_reset_cb != NULL)
+		vf->post_reset_cb(dev->data->port_id, ret, vf->post_reset_cb_arg);
+
 	vf->in_reset_recovery = false;
 	iavf_set_no_poll(adapter, false);
 
 	return;
+}
+
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_pmd_iavf_reinit, 25.11)
+int
+rte_pmd_iavf_reinit(uint16_t port)
+{
+	struct rte_eth_dev *dev;
+	struct iavf_adapter *adapter;
+
+	RTE_ETH_VALID_PORTID_OR_ERR_RET(port, -ENODEV);
+
+	dev = &rte_eth_devices[port];
+
+	if (!is_iavf_supported(dev)) {
+		PMD_DRV_LOG(ERR, "Cannot reinit VF, port %u is not an IAVF device.", port);
+		return -ENOTSUP;
+	}
+
+	if (!dev->data->dev_configured) {
+		PMD_DRV_LOG(ERR, "Cannot reinit unconfigured port %u.", port);
+		return -EINVAL;
+	}
+
+	adapter = dev->data->dev_private;
+	if (dev->data->dev_started && !adapter->devargs.no_poll_on_link_down) {
+		PMD_DRV_LOG(ERR, "Cannot reinit started port %u. Either stop the port or enable "
+				"no-poll-on-link-down in devargs.", port);
+		return -EINVAL;
+	}
+
+	iavf_handle_hw_reset(dev, true);
+
+	return 0;
+}
+
+static int
+iavf_validate_reset_cb(uint16_t port, void *cb, void *cb_arg)
+{
+	struct rte_eth_dev *dev;
+	struct iavf_info *vf;
+
+	RTE_ETH_VALID_PORTID_OR_ERR_RET(port, -ENODEV);
+
+	if (cb == NULL && cb_arg != NULL) {
+		PMD_DRV_LOG(ERR, "Cannot unregister reset cb on port %u, arg must be NULL.", port);
+		return -EINVAL;
+	}
+
+	dev = &rte_eth_devices[port];
+	if (!is_iavf_supported(dev)) {
+		PMD_DRV_LOG(ERR, "Cannot modify reset cb, port %u not an IAVF device.", port);
+		return -ENOTSUP;
+	}
+
+	vf = IAVF_DEV_PRIVATE_TO_VF(dev->data->dev_private);
+	if (vf->in_reset_recovery) {
+		PMD_DRV_LOG(ERR, "Cannot modify reset cb on port %u, VF is resetting.", port);
+		return -EBUSY;
+	}
+
+	return 0;
+}
+
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_pmd_iavf_register_pre_reset_cb, 26.03)
+int
+rte_pmd_iavf_register_pre_reset_cb(uint16_t port,
+				   iavf_pre_reset_cb_t pre_reset_cb,
+				   void *pre_reset_cb_arg)
+{
+	struct rte_eth_dev *dev;
+	struct iavf_info *vf;
+	int ret;
+
+	ret = iavf_validate_reset_cb(port, pre_reset_cb, pre_reset_cb_arg);
+	if (ret)
+		return ret;
+
+	dev = &rte_eth_devices[port];
+	vf = IAVF_DEV_PRIVATE_TO_VF(dev->data->dev_private);
+	vf->pre_reset_cb = pre_reset_cb;
+	vf->pre_reset_cb_arg = pre_reset_cb_arg;
+
+	return 0;
+}
+
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_pmd_iavf_register_post_reset_cb, 26.03)
+int
+rte_pmd_iavf_register_post_reset_cb(uint16_t port,
+				    iavf_post_reset_cb_t post_reset_cb,
+				    void *post_reset_cb_arg)
+{
+	struct rte_eth_dev *dev;
+	struct iavf_info *vf;
+	int ret;
+
+	ret = iavf_validate_reset_cb(port, post_reset_cb, post_reset_cb_arg);
+	if (ret)
+		return ret;
+
+	dev = &rte_eth_devices[port];
+	vf = IAVF_DEV_PRIVATE_TO_VF(dev->data->dev_private);
+	vf->post_reset_cb = post_reset_cb;
+	vf->post_reset_cb_arg = post_reset_cb_arg;
+
+	return 0;
 }
 
 void
@@ -3208,6 +3345,11 @@ static struct rte_pci_driver rte_iavf_pmd = {
 	.probe = eth_iavf_pci_probe,
 	.remove = eth_iavf_pci_remove,
 };
+
+bool is_iavf_supported(struct rte_eth_dev *dev)
+{
+	return !strcmp(dev->device->driver->name, rte_iavf_pmd.driver.name);
+}
 
 RTE_PMD_REGISTER_PCI(net_iavf, rte_iavf_pmd);
 RTE_PMD_REGISTER_PCI_TABLE(net_iavf, pci_id_iavf_map);

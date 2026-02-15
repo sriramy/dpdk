@@ -35,33 +35,83 @@
 #define IAVF_VPMD_DESCS_PER_LOOP_WIDE  CI_VPMD_DESCS_PER_LOOP_WIDE
 #define IAVF_VPMD_TX_MAX_FREE_BUF      64
 
-#define IAVF_TX_NO_VECTOR_FLAGS (				 \
-		RTE_ETH_TX_OFFLOAD_VLAN_INSERT |		 \
-		RTE_ETH_TX_OFFLOAD_QINQ_INSERT |		 \
-		RTE_ETH_TX_OFFLOAD_MULTI_SEGS |		 \
-		RTE_ETH_TX_OFFLOAD_TCP_TSO |		 \
-		RTE_ETH_TX_OFFLOAD_VXLAN_TNL_TSO |	 \
-		RTE_ETH_TX_OFFLOAD_GRE_TNL_TSO |	 \
-		RTE_ETH_TX_OFFLOAD_IPIP_TNL_TSO |	 \
-		RTE_ETH_TX_OFFLOAD_GENEVE_TNL_TSO |	 \
-		RTE_ETH_TX_OFFLOAD_SECURITY)
-
-#define IAVF_TX_VECTOR_OFFLOAD (				 \
-		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		 \
-		RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |		 \
-		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |		 \
-		RTE_ETH_TX_OFFLOAD_TCP_CKSUM)
-
-#define IAVF_TX_VECTOR_OFFLOAD_CTX (			\
+/* basic scalar path */
+#define IAVF_TX_SCALAR_OFFLOADS (			\
+		RTE_ETH_TX_OFFLOAD_VLAN_INSERT |	\
+		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_TCP_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_TCP_TSO |		\
+		RTE_ETH_TX_OFFLOAD_UDP_TSO |		\
 		RTE_ETH_TX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_VXLAN_TNL_TSO |	\
+		RTE_ETH_TX_OFFLOAD_QINQ_INSERT |	\
+		RTE_ETH_TX_OFFLOAD_GRE_TNL_TSO |	\
+		RTE_ETH_TX_OFFLOAD_IPIP_TNL_TSO |	\
+		RTE_ETH_TX_OFFLOAD_GENEVE_TNL_TSO |	\
+		RTE_ETH_TX_OFFLOAD_MULTI_SEGS |		\
+		RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE |	\
+		RTE_ETH_TX_OFFLOAD_SECURITY |		\
 		RTE_ETH_TX_OFFLOAD_OUTER_UDP_CKSUM)
+/* basic vector path */
+#define IAVF_TX_VECTOR_OFFLOADS RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE
+/* offload vector path */
+#define IAVF_TX_VECTOR_OFFLOAD_OFFLOADS (		\
+		IAVF_TX_VECTOR_OFFLOADS |		\
+		RTE_ETH_TX_OFFLOAD_VLAN_INSERT |	\
+		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |		\
+		RTE_ETH_TX_OFFLOAD_TCP_CKSUM)
+/* offload vector path with context descriptor */
+#define IAVF_TX_VECTOR_CTX_OFFLOAD_OFFLOADS (		\
+		IAVF_TX_VECTOR_OFFLOADS |		\
+		IAVF_TX_VECTOR_OFFLOAD_OFFLOADS |	\
+		RTE_ETH_TX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_OUTER_UDP_CKSUM |	\
+		RTE_ETH_TX_OFFLOAD_QINQ_INSERT)
 
-#define IAVF_RX_VECTOR_OFFLOAD (				 \
-		RTE_ETH_RX_OFFLOAD_CHECKSUM |		 \
-		RTE_ETH_RX_OFFLOAD_SCTP_CKSUM |		 \
-		RTE_ETH_RX_OFFLOAD_VLAN |		 \
-		RTE_ETH_RX_OFFLOAD_RSS_HASH |    \
-		RTE_ETH_RX_OFFLOAD_TIMESTAMP)
+/* basic scalar path */
+#define IAVF_RX_SCALAR_OFFLOADS (			\
+		RTE_ETH_RX_OFFLOAD_VLAN_STRIP |		\
+		RTE_ETH_RX_OFFLOAD_QINQ_STRIP |		\
+		RTE_ETH_RX_OFFLOAD_IPV4_CKSUM |		\
+		RTE_ETH_RX_OFFLOAD_UDP_CKSUM |		\
+		RTE_ETH_RX_OFFLOAD_TCP_CKSUM |		\
+		RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_SCATTER |		\
+		RTE_ETH_RX_OFFLOAD_VLAN_FILTER |	\
+		RTE_ETH_RX_OFFLOAD_VLAN_EXTEND |	\
+		RTE_ETH_RX_OFFLOAD_RSS_HASH |		\
+		RTE_ETH_RX_OFFLOAD_OUTER_UDP_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_KEEP_CRC)
+/* scalar path that uses the flex rx desc */
+#define IAVF_RX_SCALAR_FLEX_OFFLOADS (			\
+		IAVF_RX_SCALAR_OFFLOADS |		\
+		RTE_ETH_RX_OFFLOAD_TIMESTAMP |		\
+		RTE_ETH_RX_OFFLOAD_SECURITY)
+/* basic vector paths */
+#define IAVF_RX_VECTOR_OFFLOADS (			\
+		RTE_ETH_RX_OFFLOAD_KEEP_CRC |		\
+		RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+		RTE_ETH_RX_OFFLOAD_SCATTER)
+/* vector paths that use the flex rx desc */
+#define IAVF_RX_VECTOR_FLEX_OFFLOADS (			\
+		IAVF_RX_VECTOR_OFFLOADS |		\
+		RTE_ETH_RX_OFFLOAD_SECURITY)
+/* vector offload paths */
+#define IAVF_RX_VECTOR_OFFLOAD_OFFLOADS (		\
+		IAVF_RX_VECTOR_OFFLOADS |		\
+		RTE_ETH_RX_OFFLOAD_CHECKSUM |		\
+		RTE_ETH_RX_OFFLOAD_SCTP_CKSUM |		\
+		RTE_ETH_RX_OFFLOAD_VLAN |		\
+		RTE_ETH_RX_OFFLOAD_RSS_HASH)
+/* vector offload paths that use the flex rx desc */
+#define IAVF_RX_VECTOR_OFFLOAD_FLEX_OFFLOADS (		\
+		IAVF_RX_VECTOR_OFFLOAD_OFFLOADS |	\
+		RTE_ETH_RX_OFFLOAD_TIMESTAMP |		\
+		RTE_ETH_RX_OFFLOAD_SECURITY)
 
 /**
  * According to the vlan capabilities returned by the driver and FW, the vlan tci
@@ -87,14 +137,6 @@
 
 #define IAVF_TX_MIN_PKT_LEN 17
 
-#define IAVF_TX_CKSUM_OFFLOAD_MASK (		 \
-		RTE_MBUF_F_TX_IP_CKSUM |		 \
-		RTE_MBUF_F_TX_L4_MASK |		 \
-		RTE_MBUF_F_TX_TCP_SEG |          \
-		RTE_MBUF_F_TX_UDP_SEG |          \
-		RTE_MBUF_F_TX_OUTER_IP_CKSUM |   \
-		RTE_MBUF_F_TX_OUTER_UDP_CKSUM)
-
 #define IAVF_TX_OFFLOAD_MASK (  \
 		RTE_MBUF_F_TX_OUTER_IPV6 |		 \
 		RTE_MBUF_F_TX_OUTER_IPV4 |		 \
@@ -112,10 +154,6 @@
 
 #define IAVF_TX_OFFLOAD_NOTSUP_MASK \
 		(RTE_MBUF_F_TX_OFFLOAD_MASK ^ IAVF_TX_OFFLOAD_MASK)
-
-/* HW requires that TX buffer size ranges from 1B up to (16K-1)B. */
-#define IAVF_MAX_DATA_PER_TXD \
-	(IAVF_TXD_QW1_TX_BUF_SZ_MASK >> IAVF_TXD_QW1_TX_BUF_SZ_SHIFT)
 
 #define IAVF_TX_LLDP_DYNFIELD "intel_pmd_dynfield_tx_lldp"
 #define IAVF_CHECK_TX_LLDP(m) \
@@ -144,18 +182,6 @@ struct iavf_txq_ops {
 struct iavf_rx_queue_stats {
 	uint64_t reserved;
 	struct iavf_ipsec_crypto_stats ipsec_crypto;
-};
-
-/* Offload features */
-union iavf_tx_offload {
-	uint64_t data;
-	struct {
-		uint64_t l2_len:7; /* L2 (MAC) Header Length. */
-		uint64_t l3_len:9; /* L3 (IP) Header Length. */
-		uint64_t l4_len:8; /* L4 Header Length. */
-		uint64_t tso_segsz:16; /* TCP TSO segment size */
-		/* uint64_t unused : 24; */
-	};
 };
 
 /* Rx Flex Descriptor
@@ -274,9 +300,8 @@ struct iavf_32b_rx_flex_desc_comms_ipsec {
 
 enum iavf_rxtx_rel_mbufs_type {
 	IAVF_REL_MBUFS_DEFAULT		= 0,
-	IAVF_REL_MBUFS_SSE_VEC		= 1,
-	IAVF_REL_MBUFS_AVX512_VEC	= 2,
-	IAVF_REL_MBUFS_NEON_VEC		= 3,
+	IAVF_REL_MBUFS_VEC		= 1,
+	IAVF_REL_MBUFS_NEON_VEC		= 2,
 };
 
 /* Receive Flex Descriptor profile IDs: There are a total
@@ -361,7 +386,7 @@ enum iavf_rx_flex_desc_ipsec_crypto_status {
 
 
 #define IAVF_TXD_DATA_QW1_DTYPE_SHIFT	(0)
-#define IAVF_TXD_DATA_QW1_DTYPE_MASK	(0xFUL << IAVF_TXD_QW1_DTYPE_SHIFT)
+#define IAVF_TXD_DATA_QW1_DTYPE_MASK	(0xFUL << CI_TXD_QW1_DTYPE_S)
 
 #define IAVF_TXD_DATA_QW1_CMD_SHIFT	(4)
 #define IAVF_TXD_DATA_QW1_CMD_MASK	(0x3FFUL << IAVF_TXD_DATA_QW1_CMD_SHIFT)
@@ -471,6 +496,9 @@ enum iavf_tx_ctx_desc_tunnel_l4_tunnel_type {
 /* for iavf_32b_rx_flex_desc.pkt_len member */
 #define IAVF_RX_FLX_DESC_PKT_LEN_M	(0x3FFF) /* 14-bits */
 
+/* Valid indicator bit for the time_stamp_low field */
+#define IAVF_RX_FLX_DESC_TS_VALID	(0x1UL)
+
 int iavf_dev_rx_queue_setup(struct rte_eth_dev *dev,
 			   uint16_t queue_idx,
 			   uint16_t nb_desc,
@@ -516,7 +544,7 @@ void iavf_dev_rxq_info_get(struct rte_eth_dev *dev, uint16_t queue_id,
 			  struct rte_eth_rxq_info *qinfo);
 void iavf_dev_txq_info_get(struct rte_eth_dev *dev, uint16_t queue_id,
 			  struct rte_eth_txq_info *qinfo);
-uint32_t iavf_dev_rxq_count(void *rx_queue);
+int iavf_dev_rxq_count(void *rx_queue);
 int iavf_dev_rx_desc_status(void *rx_queue, uint16_t offset);
 int iavf_dev_tx_desc_status(void *tx_queue, uint16_t offset);
 
@@ -602,10 +630,9 @@ int iavf_txq_vec_setup_avx512(struct ci_tx_queue *txq);
 uint8_t iavf_proto_xtr_type_to_rxdid(uint8_t xtr_type);
 
 void iavf_set_default_ptype_table(struct rte_eth_dev *dev);
-void iavf_tx_queue_release_mbufs_avx512(struct ci_tx_queue *txq);
-void iavf_rx_queue_release_mbufs_sse(struct ci_rx_queue *rxq);
-void iavf_tx_queue_release_mbufs_sse(struct ci_tx_queue *txq);
+void iavf_rx_queue_release_mbufs_vec(struct ci_rx_queue *rxq);
 void iavf_rx_queue_release_mbufs_neon(struct ci_rx_queue *rxq);
+enum rte_vect_max_simd iavf_get_max_simd_bitwidth(void);
 
 static inline
 void iavf_dump_rx_descriptor(struct ci_rx_queue *rxq,
@@ -628,7 +655,7 @@ void iavf_dump_tx_descriptor(const struct ci_tx_queue *txq,
 			    const volatile void *desc, uint16_t tx_id)
 {
 	const char *name;
-	const volatile struct iavf_tx_desc *tx_desc = desc;
+	const volatile struct ci_tx_desc *tx_desc = desc;
 	enum iavf_tx_desc_dtype_value type;
 
 
@@ -636,7 +663,7 @@ void iavf_dump_tx_descriptor(const struct ci_tx_queue *txq,
 		rte_le_to_cpu_64(tx_desc->cmd_type_offset_bsz &
 			rte_cpu_to_le_64(IAVF_TXD_DATA_QW1_DTYPE_MASK));
 	switch (type) {
-	case IAVF_TX_DESC_DTYPE_DATA:
+	case CI_TX_DESC_DTYPE_DATA:
 		name = "Tx_data_desc";
 		break;
 	case IAVF_TX_DESC_DTYPE_CONTEXT:

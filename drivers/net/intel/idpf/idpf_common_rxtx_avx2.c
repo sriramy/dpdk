@@ -20,7 +20,7 @@ idpf_singleq_rx_rearm(struct idpf_rx_queue *rxq)
 	rxdp += rxq->rxrearm_start;
 
 	/* Pull 'n' more MBUFs into the software ring */
-	if (rte_mempool_get_bulk(rxq->mp,
+	if (rte_mbuf_raw_alloc_bulk(rxq->mp,
 				 (void *)rxep,
 				 IDPF_RXQ_REARM_THRESH) < 0) {
 		if (rxq->rxrearm_nb + IDPF_RXQ_REARM_THRESH >=
@@ -483,13 +483,12 @@ idpf_dp_singleq_recv_pkts_avx2(void *rx_queue, struct rte_mbuf **rx_pkts, uint16
 }
 
 static inline void
-idpf_singleq_vtx1(volatile struct idpf_base_tx_desc *txdp,
+idpf_singleq_vtx1(volatile struct ci_tx_desc *txdp,
 		  struct rte_mbuf *pkt, uint64_t flags)
 {
-	uint64_t high_qw =
-		(IDPF_TX_DESC_DTYPE_DATA |
-		 ((uint64_t)flags  << IDPF_TXD_QW1_CMD_S) |
-		 ((uint64_t)pkt->data_len << IDPF_TXD_QW1_TX_BUF_SZ_S));
+	uint64_t high_qw = (CI_TX_DESC_DTYPE_DATA |
+		 ((uint64_t)flags << CI_TXD_QW1_CMD_S) |
+		 ((uint64_t)pkt->data_len << CI_TXD_QW1_TX_BUF_SZ_S));
 
 	__m128i descriptor = _mm_set_epi64x(high_qw,
 				pkt->buf_iova + pkt->data_off);
@@ -497,36 +496,27 @@ idpf_singleq_vtx1(volatile struct idpf_base_tx_desc *txdp,
 }
 
 static inline void
-idpf_singleq_vtx(volatile struct idpf_base_tx_desc *txdp,
+idpf_singleq_vtx(volatile struct ci_tx_desc *txdp,
 		 struct rte_mbuf **pkt, uint16_t nb_pkts,  uint64_t flags)
 {
-	const uint64_t hi_qw_tmpl = (IDPF_TX_DESC_DTYPE_DATA |
-			((uint64_t)flags  << IDPF_TXD_QW1_CMD_S));
+	const uint64_t hi_qw_tmpl = (CI_TX_DESC_DTYPE_DATA | (flags << CI_TXD_QW1_CMD_S));
 
 	/* if unaligned on 32-bit boundary, do one to align */
 	if (((uintptr_t)txdp & 0x1F) != 0 && nb_pkts != 0) {
 		idpf_singleq_vtx1(txdp, *pkt, flags);
-		nb_pkts--, txdp++, pkt++;
+		nb_pkts--; txdp++; pkt++;
 	}
 
 	/* do two at a time while possible, in bursts */
 	for (; nb_pkts > 3; txdp += 4, pkt += 4, nb_pkts -= 4) {
-		uint64_t hi_qw3 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[3]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw2 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[2]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw1 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[1]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw0 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[0]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw3 = hi_qw_tmpl |
+			((uint64_t)pkt[3]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw2 = hi_qw_tmpl |
+			((uint64_t)pkt[2]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw1 = hi_qw_tmpl |
+			((uint64_t)pkt[1]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw0 = hi_qw_tmpl |
+			((uint64_t)pkt[0]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
 
 		__m256i desc2_3 =
 			_mm256_set_epi64x
@@ -547,7 +537,7 @@ idpf_singleq_vtx(volatile struct idpf_base_tx_desc *txdp,
 	/* do any last ones */
 	while (nb_pkts) {
 		idpf_singleq_vtx1(txdp, *pkt, flags);
-		txdp++, pkt++, nb_pkts--;
+		txdp++; pkt++; nb_pkts--;
 	}
 }
 
@@ -556,11 +546,11 @@ idpf_singleq_xmit_fixed_burst_vec_avx2(void *tx_queue, struct rte_mbuf **tx_pkts
 				       uint16_t nb_pkts)
 {
 	struct ci_tx_queue *txq = (struct ci_tx_queue *)tx_queue;
-	volatile struct idpf_base_tx_desc *txdp;
+	volatile struct ci_tx_desc *txdp;
 	struct ci_tx_entry_vec *txep;
 	uint16_t n, nb_commit, tx_id;
-	uint64_t flags = IDPF_TX_DESC_CMD_EOP;
-	uint64_t rs = IDPF_TX_DESC_CMD_RS | flags;
+	uint64_t flags = CI_TX_DESC_CMD_EOP;
+	uint64_t rs = CI_TX_DESC_CMD_RS | flags;
 
 	/* cross rx_thresh boundary is not allowed */
 	nb_pkts = RTE_MIN(nb_pkts, txq->tx_rs_thresh);
@@ -573,7 +563,7 @@ idpf_singleq_xmit_fixed_burst_vec_avx2(void *tx_queue, struct rte_mbuf **tx_pkts
 		return 0;
 
 	tx_id = txq->tx_tail;
-	txdp = &txq->idpf_tx_ring[tx_id];
+	txdp = &txq->ci_tx_ring[tx_id];
 	txep = &txq->sw_ring_vec[tx_id];
 
 	txq->nb_tx_free = (uint16_t)(txq->nb_tx_free - nb_pkts);
@@ -594,7 +584,7 @@ idpf_singleq_xmit_fixed_burst_vec_avx2(void *tx_queue, struct rte_mbuf **tx_pkts
 		txq->tx_next_rs = (uint16_t)(txq->tx_rs_thresh - 1);
 
 		/* avoid reach the end of ring */
-		txdp = &txq->idpf_tx_ring[tx_id];
+		txdp = &txq->ci_tx_ring[tx_id];
 		txep = &txq->sw_ring_vec[tx_id];
 	}
 
@@ -604,9 +594,8 @@ idpf_singleq_xmit_fixed_burst_vec_avx2(void *tx_queue, struct rte_mbuf **tx_pkts
 
 	tx_id = (uint16_t)(tx_id + nb_commit);
 	if (tx_id > txq->tx_next_rs) {
-		txq->idpf_tx_ring[txq->tx_next_rs].qw1 |=
-			rte_cpu_to_le_64(((uint64_t)IDPF_TX_DESC_CMD_RS) <<
-					 IDPF_TXD_QW1_CMD_S);
+		txq->ci_tx_ring[txq->tx_next_rs].cmd_type_offset_bsz |=
+			rte_cpu_to_le_64(((uint64_t)CI_TX_DESC_CMD_RS) << CI_TXD_QW1_CMD_S);
 		txq->tx_next_rs =
 			(uint16_t)(txq->tx_next_rs + txq->tx_rs_thresh);
 	}

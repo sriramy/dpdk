@@ -103,7 +103,7 @@ mlx5_dev_configure(struct rte_eth_dev *dev)
 	memcpy(priv->rss_conf.rss_key,
 	       use_app_rss_key ?
 	       dev->data->dev_conf.rx_adv_conf.rss_conf.rss_key :
-	       rss_hash_default_key,
+	       mlx5_rss_hash_default_key,
 	       MLX5_RSS_HASH_KEY_LEN);
 	priv->rss_conf.rss_key_len = MLX5_RSS_HASH_KEY_LEN;
 	priv->rss_conf.rss_hf = dev->data->dev_conf.rx_adv_conf.rss_conf.rss_hf;
@@ -360,9 +360,11 @@ mlx5_dev_infos_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *info)
 	unsigned int max;
 	uint16_t max_wqe;
 
+	info->min_mtu = priv->min_mtu;
+	info->max_mtu = priv->max_mtu;
+	info->max_rx_pktlen = info->max_mtu + MLX5_ETH_OVERHEAD;
 	/* FIXME: we should ask the device for these values. */
 	info->min_rx_bufsize = 32;
-	info->max_rx_pktlen = 65536;
 	info->max_lro_pkt_size = MLX5_MAX_LRO_SIZE;
 	/*
 	 * Since we need one CQ per QP, the limit is the minimum number
@@ -395,7 +397,7 @@ mlx5_dev_infos_get(struct rte_eth_dev *dev, struct rte_eth_dev_info *info)
 	info->rx_desc_lim.nb_max = max_wqe;
 	info->tx_desc_lim.nb_max = max_wqe;
 	if (priv->sh->cdev->config.hca_attr.mem_rq_rmp &&
-	    priv->obj_ops.rxq_obj_new == devx_obj_ops.rxq_obj_new)
+	    priv->obj_ops.rxq_obj_new == mlx5_devx_obj_ops.rxq_obj_new)
 		info->dev_capa |= RTE_ETH_DEV_CAPA_RXQ_SHARE;
 	info->switch_info.name = dev->data->name;
 	info->switch_info.domain_id = priv->domain_id;
@@ -491,8 +493,9 @@ mlx5_representor_info_get(struct rte_eth_dev *dev,
 			  struct rte_eth_representor_info *info)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
-	int n_type = 5; /* Representor types: PF, VF, HPF@VF, SF and HPF@SF. */
-	int n_pf = 2; /* Number of PFs. */
+	/* Representor types: PF, VF, HPF@VF, SF and HPF@SF, total 5. */
+	int n_type = RTE_ETH_REPRESENTOR_PF + 2; /* Maximal type + 2 for HPFs. */
+	int n_pf = 8; /* Maximal number of PFs. */
 	int i = 0, pf;
 	int n_entries;
 
@@ -507,25 +510,29 @@ mlx5_representor_info_get(struct rte_eth_dev *dev,
 	info->pf = 0;
 	if (mlx5_is_port_on_mpesw_device(priv)) {
 		info->pf = priv->mpesw_port;
-		/* PF range, both ports will show the same information. */
-		info->ranges[i].type = RTE_ETH_REPRESENTOR_PF;
-		info->ranges[i].controller = 0;
-		info->ranges[i].pf = priv->mpesw_owner + 1;
-		info->ranges[i].vf = 0;
-		/*
-		 * The representor indexes should be the values set of "priv->mpesw_port".
-		 * In the real case now, only 1 PF/UPLINK representor is supported.
-		 * The port index will always be the value of "owner + 1".
-		 */
-		info->ranges[i].id_base =
-			MLX5_REPRESENTOR_ID(priv->mpesw_owner, info->ranges[i].type,
-					    info->ranges[i].pf);
-		info->ranges[i].id_end =
-			MLX5_REPRESENTOR_ID(priv->mpesw_owner, info->ranges[i].type,
-					    info->ranges[i].pf);
-		snprintf(info->ranges[i].name, sizeof(info->ranges[i].name),
-			 "pf%d", info->ranges[i].pf);
-		i++;
+		for (i = 0; i < n_pf; i++) {
+			/* PF range, both ports will show the same information. */
+			info->ranges[i].type = RTE_ETH_REPRESENTOR_PF;
+			info->ranges[i].controller = 0;
+			info->ranges[i].pf = priv->mpesw_owner + i + 1;
+			info->ranges[i].vf = 0;
+			/*
+			 * The representor indexes should be the values set of "priv->mpesw_port".
+			 * In the real case now, only 1 PF/UPLINK representor is supported.
+			 * The port index will always be the value of "owner + 1".
+			 */
+			info->ranges[i].id_base =
+				MLX5_REPRESENTOR_ID(priv->mpesw_owner,
+						    info->ranges[i].type,
+						    info->ranges[i].pf);
+			info->ranges[i].id_end =
+				MLX5_REPRESENTOR_ID(priv->mpesw_owner,
+						    info->ranges[i].type,
+						    info->ranges[i].pf);
+			snprintf(info->ranges[i].name,
+				 sizeof(info->ranges[i].name),
+				 "pf%d", info->ranges[i].pf);
+		}
 	} else if (priv->pf_bond >= 0)
 		info->pf = priv->pf_bond;
 	for (pf = 0; pf < n_pf; ++pf) {
@@ -672,7 +679,6 @@ mlx5_dev_supported_ptypes_get(struct rte_eth_dev *dev, size_t *no_of_elements)
 int
 mlx5_dev_set_mtu(struct rte_eth_dev *dev, uint16_t mtu)
 {
-	struct mlx5_priv *priv = dev->data->dev_private;
 	uint16_t kern_mtu = 0;
 	int ret;
 
@@ -681,7 +687,6 @@ mlx5_dev_set_mtu(struct rte_eth_dev *dev, uint16_t mtu)
 		return ret;
 
 	if (kern_mtu == mtu) {
-		priv->mtu = mtu;
 		DRV_LOG(DEBUG, "port %u adapter MTU was already set to %u",
 			dev->data->port_id, mtu);
 		return 0;
@@ -695,7 +700,6 @@ mlx5_dev_set_mtu(struct rte_eth_dev *dev, uint16_t mtu)
 	if (ret)
 		return ret;
 	if (kern_mtu == mtu) {
-		priv->mtu = mtu;
 		DRV_LOG(DEBUG, "port %u adapter MTU set to %u",
 			dev->data->port_id, mtu);
 		return 0;
@@ -862,4 +866,42 @@ mlx5_get_restore_flags(__rte_unused struct rte_eth_dev *dev,
 {
 	/* mlx5 PMD does not require any configuration restore. */
 	return 0;
+}
+
+/**
+ * Query minimum and maximum allowed MTU value on the device.
+ *
+ * This functions will always return valid MTU bounds.
+ * In case platform-specific implementation fails or current platform does not support it,
+ * the fallback default values will be used.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device
+ * @param[out] min_mtu
+ *   Minimum MTU value output buffer.
+ * @param[out] max_mtu
+ *   Maximum MTU value output buffer.
+ */
+void
+mlx5_get_mtu_bounds(struct rte_eth_dev *dev, uint16_t *min_mtu, uint16_t *max_mtu)
+{
+	int ret;
+
+	MLX5_ASSERT(min_mtu != NULL);
+	MLX5_ASSERT(max_mtu != NULL);
+
+	ret = mlx5_os_get_mtu_bounds(dev, min_mtu, max_mtu);
+	if (ret < 0) {
+		if (ret != -ENOTSUP)
+			DRV_LOG(INFO, "port %u failed to query MTU bounds, using fallback values",
+				dev->data->port_id);
+		*min_mtu = MLX5_ETH_MIN_MTU;
+		*max_mtu = MLX5_ETH_MAX_MTU;
+
+		/* This function does not fail. Clear rte_errno. */
+		rte_errno = 0;
+	}
+
+	DRV_LOG(INFO, "port %u minimum MTU is %u", dev->data->port_id, *min_mtu);
+	DRV_LOG(INFO, "port %u maximum MTU is %u", dev->data->port_id, *max_mtu);
 }

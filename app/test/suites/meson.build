@@ -7,6 +7,11 @@ timeout_seconds = 600
 timeout_seconds_fast = 10
 timeout_seconds_stress = 900
 
+if arch_subdir == 'riscv'
+    # Current RISC-V machines are too slow to finish fast tests under 10s
+    timeout_seconds_fast = 60
+endif
+
 test_no_huge_args = ['--no-huge', '-m', '2048']
 has_hugepage = run_command(has_hugepages_cmd, check: true).stdout().strip() != '0'
 message('hugepage availability: @0@'.format(has_hugepage))
@@ -62,9 +67,19 @@ foreach suite:test_suites
         # special fast-test handling here
         foreach t: suite_tests
             params = t.split(':')
+            # check for valid options for asan and nohuge
+            if params[1] != 'NOHUGE_OK' and params[1] != 'NOHUGE_SKIP'
+                error('Invalid parameter "@0@" for test "@1@". Must be NOHUGE_OK or NOHUGE_SKIP.'
+                    .format(params[1], params[0]))
+            endif
+            if params[2] != 'ASAN_OK' and params[2] != 'ASAN_SKIP'
+                error('Invalid parameter "@0@" for test "@1@". Must be ASAN_OK or ASAN_SKIP.'
+                    .format(params[2], params[0]))
+            endif
+
             test_name = params[0]
-            nohuge = params[1] == 'true'
-            asan = params[2] == 'true'
+            nohuge = params[1] == 'NOHUGE_OK'
+            asan = params[2] == 'ASAN_OK'
 
             test_args = []
             if nohuge
@@ -72,8 +87,7 @@ foreach suite:test_suites
             elif not has_hugepage
                 continue  #skip this tests
             endif
-            if not asan and (get_option('b_sanitize') == 'address'
-                    or get_option('b_sanitize') == 'address,undefined')
+            if not asan and get_option('b_sanitize').contains('address')
                 continue  # skip this test
             endif
 

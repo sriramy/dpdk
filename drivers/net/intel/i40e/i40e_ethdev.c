@@ -256,7 +256,7 @@ static int i40e_dev_allmulticast_disable(struct rte_eth_dev *dev);
 static int i40e_dev_set_link_up(struct rte_eth_dev *dev);
 static int i40e_dev_set_link_down(struct rte_eth_dev *dev);
 static int i40e_dev_stats_get(struct rte_eth_dev *dev,
-			       struct rte_eth_stats *stats);
+			       struct rte_eth_stats *stats,	struct eth_queue_stats *qstats);
 static int i40e_dev_xstats_get(struct rte_eth_dev *dev,
 			       struct rte_eth_xstat *xstats, unsigned n);
 static int i40e_dev_xstats_get_names(struct rte_eth_dev *dev,
@@ -3474,7 +3474,8 @@ i40e_read_stats_registers(struct i40e_pf *pf, struct i40e_hw *hw)
 
 /* Get all statistics of a port */
 static int
-i40e_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+i40e_dev_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		struct eth_queue_stats *qstats __rte_unused)
 {
 	struct i40e_pf *pf = I40E_DEV_PRIVATE_TO_PF(dev->data->dev_private);
 	struct i40e_hw *hw = I40E_DEV_PRIVATE_TO_HW(dev->data->dev_private);
@@ -4149,6 +4150,16 @@ i40e_vlan_offload_set(struct rte_eth_dev *dev, int mask)
 			i40e_vsi_config_vlan_stripping(vsi, TRUE);
 		else
 			i40e_vsi_config_vlan_stripping(vsi, FALSE);
+
+		/* When VLAN strip is enabled/disabled
+		 * after enabling outer VLAN stripping,
+		 * outer VLAN stripping gets disabled
+		 * as the register gets overridden by
+		 * VLAN's strip vsi param update.
+		 * Hence, re-enable outer VLAN stripping.
+		 */
+		if (rxmode->offloads & RTE_ETH_RX_OFFLOAD_QINQ_STRIP)
+			i40e_vsi_config_outer_vlan_stripping(vsi, TRUE);
 	}
 
 	if (mask & RTE_ETH_VLAN_EXTEND_MASK) {
@@ -5097,16 +5108,14 @@ i40e_res_pool_destroy(struct i40e_res_pool_info *pool)
 	if (pool == NULL)
 		return;
 
-	for (entry = LIST_FIRST(&pool->alloc_list);
-			entry && (next_entry = LIST_NEXT(entry, next), 1);
-			entry = next_entry) {
+	for (entry = LIST_FIRST(&pool->alloc_list); entry; entry = next_entry) {
+		next_entry = LIST_NEXT(entry, next);
 		LIST_REMOVE(entry, next);
 		rte_free(entry);
 	}
 
-	for (entry = LIST_FIRST(&pool->free_list);
-			entry && (next_entry = LIST_NEXT(entry, next), 1);
-			entry = next_entry) {
+	for (entry = LIST_FIRST(&pool->free_list); entry; entry = next_entry) {
+		next_entry = LIST_NEXT(entry, next);
 		LIST_REMOVE(entry, next);
 		rte_free(entry);
 	}

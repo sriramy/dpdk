@@ -533,7 +533,7 @@ sfc_repr_dev_link_update(struct rte_eth_dev *dev,
 	struct rte_eth_link link;
 
 	if (sr->state != SFC_ETHDEV_STARTED) {
-		sfc_port_link_mode_to_info(EFX_LINK_UNKNOWN, &link);
+		sfc_port_link_mode_to_info(EFX_LINK_UNKNOWN, 0, &link);
 	} else {
 		memset(&link, 0, sizeof(link));
 		link.link_status = RTE_ETH_LINK_UP;
@@ -846,7 +846,8 @@ sfc_repr_mac_addr_set(struct rte_eth_dev *dev, struct rte_ether_addr *mac_addr)
 }
 
 static int
-sfc_repr_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+sfc_repr_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		    struct eth_queue_stats *qstats __rte_unused)
 {
 	union sfc_pkts_bytes queue_stats;
 	uint16_t i;

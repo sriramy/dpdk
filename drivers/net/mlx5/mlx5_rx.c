@@ -73,7 +73,7 @@ mlx5_lro_update_hdr(uint8_t *__rte_restrict padd,
  * @return
  *   The number of used Rx descriptor.
  */
-static uint32_t
+static int
 rx_queue_count(struct mlx5_rxq_data *rxq)
 {
 	struct rxq_zip *zip = &rxq->zip;
@@ -261,7 +261,7 @@ mlx5_rx_burst_mode_get(struct rte_eth_dev *dev,
  *   The number of used rx descriptor.
  *   -EINVAL if the queue is invalid
  */
-uint32_t
+int
 mlx5_rx_queue_count(void *rx_queue)
 {
 	struct mlx5_rxq_data *rxq = rx_queue;
@@ -295,6 +295,20 @@ mlx5_monitor_callback(const uint64_t value,
 	return (value & m) == v ? -1 : 0;
 }
 
+static int
+mlx5_monitor_cqe_own_callback(const uint64_t value,
+		const uint64_t opaque[RTE_POWER_MONITOR_OPAQUE_SZ])
+{
+	const uint64_t m = opaque[CLB_MSK_IDX];
+	const uint64_t v = opaque[CLB_VAL_IDX];
+	const uint64_t sw_owned = ((value & m) == v);
+	const uint64_t opcode = MLX5_CQE_OPCODE(value);
+	const uint64_t valid_op = (opcode != MLX5_CQE_INVALID);
+
+	/* ownership bit is not valid for invalid opcode; CQE is HW owned */
+	return -(valid_op & sw_owned);
+}
+
 int mlx5_get_monitor_addr(void *rx_queue, struct rte_power_monitor_cond *pmc)
 {
 	struct mlx5_rxq_data *rxq = rx_queue;
@@ -312,12 +326,13 @@ int mlx5_get_monitor_addr(void *rx_queue, struct rte_power_monitor_cond *pmc)
 		pmc->addr = &cqe->validity_iteration_count;
 		pmc->opaque[CLB_VAL_IDX] = vic;
 		pmc->opaque[CLB_MSK_IDX] = MLX5_CQE_VIC_INIT;
+		pmc->fn = mlx5_monitor_callback;
 	} else {
 		pmc->addr = &cqe->op_own;
 		pmc->opaque[CLB_VAL_IDX] = !!idx;
 		pmc->opaque[CLB_MSK_IDX] = MLX5_CQE_OWNER_MASK;
+		pmc->fn = mlx5_monitor_cqe_own_callback;
 	}
-	pmc->fn = mlx5_monitor_callback;
 	pmc->size = sizeof(uint8_t);
 	return 0;
 }
@@ -603,7 +618,7 @@ mlx5_rx_err_handle(struct mlx5_rxq_data *rxq, uint8_t vec,
 		}
 		/* Try to find the actual cq_ci in hardware for shared queue. */
 		if (rxq->shared)
-			rxq_sync_cq(rxq);
+			mlx5_rxq_sync_cq(rxq);
 		rxq->err_state = MLX5_RXQ_ERR_STATE_NEED_READY;
 		/* Fall-through */
 	case MLX5_RXQ_ERR_STATE_NEED_READY:
@@ -1093,7 +1108,7 @@ mlx5_rx_burst(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts_n)
 				break;
 			}
 			pkt = seg;
-			MLX5_ASSERT(len >= (rxq->crc_present << 2));
+			MLX5_ASSERT(len >= (int)(rxq->crc_present << 2));
 			pkt->ol_flags &= RTE_MBUF_F_EXTERNAL;
 			if (rxq->cqe_comp_layout && mcqe)
 				cqe = &rxq->title_cqe;
@@ -1273,7 +1288,7 @@ mlx5_rx_burst_out_of_order(void *dpdk_rxq, struct rte_mbuf **pkts, uint16_t pkts
 		}
 		if (!pkt) {
 			pkt = seg;
-			MLX5_ASSERT(len >= (rxq->crc_present << 2));
+			MLX5_ASSERT(len >= (int)(rxq->crc_present << 2));
 			pkt->ol_flags &= RTE_MBUF_F_EXTERNAL;
 			if (rxq->cqe_comp_layout && mcqe)
 				cqe = &rxq->title_cqe;
@@ -1693,7 +1708,7 @@ mlx5_rx_queue_lwm_set(struct rte_eth_dev *dev, uint16_t rx_queue_id,
 	}
 	rxq_data = &rxq->ctrl->rxq;
 	/* Ensure the Rq is created by devx. */
-	if (priv->obj_ops.rxq_obj_new != devx_obj_ops.rxq_obj_new) {
+	if (priv->obj_ops.rxq_obj_new != mlx5_devx_obj_ops.rxq_obj_new) {
 		rte_errno = EINVAL;
 		return -rte_errno;
 	}

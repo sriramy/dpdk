@@ -51,7 +51,7 @@ extern "C" {
  * @param nr
  *   The shift number in range of 0 to (32 - width of val).
  */
-#define RTE_SHIFT_VAL32(val, nr) (UINT32_C(val) << (nr))
+#define RTE_SHIFT_VAL32(val, nr) ((uint32_t)(val) << (nr))
 
 /**
  * Get the uint64_t shifted value.
@@ -61,7 +61,7 @@ extern "C" {
  * @param nr
  *   The shift number in range of 0 to (64 - width of val).
  */
-#define RTE_SHIFT_VAL64(val, nr) (UINT64_C(val) << (nr))
+#define RTE_SHIFT_VAL64(val, nr) ((uint64_t)(val) << (nr))
 
 /**
  * Generate a contiguous 32-bit mask
@@ -1320,7 +1320,7 @@ rte_is_power_of_2(uint32_t n)
  *   The integer value to align
  *
  * @return
- *   Input parameter aligned to the next power of 2
+ *   The smallest power of 2 which is greater than or equal to @c x.
  */
 static inline uint32_t
 rte_align32pow2(uint32_t x)
@@ -1338,7 +1338,7 @@ rte_align32pow2(uint32_t x)
  *   The integer value to align
  *
  * @return
- *   Input parameter aligned to the previous power of 2
+ *   The greatest power of 2 which is smaller than or equal to @c x.
  */
 static inline uint32_t
 rte_align32prevpow2(uint32_t x)
@@ -1355,7 +1355,7 @@ rte_align32prevpow2(uint32_t x)
  *   The 64b value to align
  *
  * @return
- *   Input parameter aligned to the next power of 2
+ *   The smallest power of 2 which is greater than or equal to @c v.
  */
 static inline uint64_t
 rte_align64pow2(uint64_t v)
@@ -1373,7 +1373,7 @@ rte_align64pow2(uint64_t v)
  *   The 64b value to align
  *
  * @return
- *   Input parameter aligned to the previous power of 2
+ *   The greatest power of 2 which is smaller than or equal to @c v.
  */
 static inline uint64_t
 rte_align64prevpow2(uint64_t v)

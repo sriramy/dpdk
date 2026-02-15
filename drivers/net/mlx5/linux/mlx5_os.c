@@ -431,8 +431,8 @@ __mlx5_discovery_misc5_cap(struct mlx5_priv *priv)
 		DRV_LOG(INFO, "No SW steering support");
 		return;
 	}
-	dv_attr.type = IBV_FLOW_ATTR_NORMAL,
-	dv_attr.match_mask = (void *)&matcher_mask,
+	dv_attr.type = IBV_FLOW_ATTR_NORMAL;
+	dv_attr.match_mask = (void *)&matcher_mask;
 	dv_attr.match_criteria_enable =
 			(1 << MLX5_MATCH_CRITERIA_ENABLE_OUTER_BIT) |
 			(1 << MLX5_MATCH_CRITERIA_ENABLE_MISC5_BIT);
@@ -510,11 +510,11 @@ mlx5_alloc_shared_dr(struct rte_eth_dev *eth_dev)
 			sh->mreg_cp_tbl = mlx5_hlist_create(MLX5_FLOW_MREG_HNAME,
 							    MLX5_FLOW_MREG_HTABLE_SZ,
 							    false, true, eth_dev,
-							    flow_nta_mreg_create_cb,
-							    flow_dv_mreg_match_cb,
-							    flow_nta_mreg_remove_cb,
-							    flow_dv_mreg_clone_cb,
-							    flow_dv_mreg_clone_free_cb);
+							    mlx5_flow_nta_mreg_create_cb,
+							    mlx5_flow_dv_mreg_match_cb,
+							    mlx5_flow_nta_mreg_remove_cb,
+							    mlx5_flow_dv_mreg_clone_cb,
+							    mlx5_flow_dv_mreg_clone_free_cb);
 			if (!sh->mreg_cp_tbl) {
 				err = ENOMEM;
 				goto error;
@@ -525,41 +525,41 @@ mlx5_alloc_shared_dr(struct rte_eth_dev *eth_dev)
 	/* Init port id action list. */
 	snprintf(s, sizeof(s), "%s_port_id_action_list", sh->ibdev_name);
 	sh->port_id_action_list = mlx5_list_create(s, sh, true,
-						   flow_dv_port_id_create_cb,
-						   flow_dv_port_id_match_cb,
-						   flow_dv_port_id_remove_cb,
-						   flow_dv_port_id_clone_cb,
-						 flow_dv_port_id_clone_free_cb);
+						   mlx5_flow_dv_port_id_create_cb,
+						   mlx5_flow_dv_port_id_match_cb,
+						   mlx5_flow_dv_port_id_remove_cb,
+						   mlx5_flow_dv_port_id_clone_cb,
+						   mlx5_flow_dv_port_id_clone_free_cb);
 	if (!sh->port_id_action_list)
 		goto error;
 	/* Init push vlan action list. */
 	snprintf(s, sizeof(s), "%s_push_vlan_action_list", sh->ibdev_name);
 	sh->push_vlan_action_list = mlx5_list_create(s, sh, true,
-						    flow_dv_push_vlan_create_cb,
-						    flow_dv_push_vlan_match_cb,
-						    flow_dv_push_vlan_remove_cb,
-						    flow_dv_push_vlan_clone_cb,
-					       flow_dv_push_vlan_clone_free_cb);
+						    mlx5_flow_dv_push_vlan_create_cb,
+						    mlx5_flow_dv_push_vlan_match_cb,
+						    mlx5_flow_dv_push_vlan_remove_cb,
+						    mlx5_flow_dv_push_vlan_clone_cb,
+						    mlx5_flow_dv_push_vlan_clone_free_cb);
 	if (!sh->push_vlan_action_list)
 		goto error;
 	/* Init sample action list. */
 	snprintf(s, sizeof(s), "%s_sample_action_list", sh->ibdev_name);
 	sh->sample_action_list = mlx5_list_create(s, sh, true,
-						  flow_dv_sample_create_cb,
-						  flow_dv_sample_match_cb,
-						  flow_dv_sample_remove_cb,
-						  flow_dv_sample_clone_cb,
-						  flow_dv_sample_clone_free_cb);
+						  mlx5_flow_dv_sample_create_cb,
+						  mlx5_flow_dv_sample_match_cb,
+						  mlx5_flow_dv_sample_remove_cb,
+						  mlx5_flow_dv_sample_clone_cb,
+						  mlx5_flow_dv_sample_clone_free_cb);
 	if (!sh->sample_action_list)
 		goto error;
 	/* Init dest array action list. */
 	snprintf(s, sizeof(s), "%s_dest_array_list", sh->ibdev_name);
 	sh->dest_array_list = mlx5_list_create(s, sh, true,
-					       flow_dv_dest_array_create_cb,
-					       flow_dv_dest_array_match_cb,
-					       flow_dv_dest_array_remove_cb,
-					       flow_dv_dest_array_clone_cb,
-					      flow_dv_dest_array_clone_free_cb);
+					       mlx5_flow_dv_dest_array_create_cb,
+					       mlx5_flow_dv_dest_array_match_cb,
+					       mlx5_flow_dv_dest_array_remove_cb,
+					       mlx5_flow_dv_dest_array_clone_cb,
+					       mlx5_flow_dv_dest_array_clone_free_cb);
 	if (!sh->dest_array_list)
 		goto error;
 #else
@@ -635,11 +635,11 @@ mlx5_alloc_shared_dr(struct rte_eth_dev *eth_dev)
 			sh->mreg_cp_tbl = mlx5_hlist_create(MLX5_FLOW_MREG_HNAME,
 							    MLX5_FLOW_MREG_HTABLE_SZ,
 							    false, true, eth_dev,
-							    flow_dv_mreg_create_cb,
-							    flow_dv_mreg_match_cb,
-							    flow_dv_mreg_remove_cb,
-							    flow_dv_mreg_clone_cb,
-							    flow_dv_mreg_clone_free_cb);
+							    mlx5_flow_dv_mreg_create_cb,
+							    mlx5_flow_dv_mreg_match_cb,
+							    mlx5_flow_dv_mreg_remove_cb,
+							    mlx5_flow_dv_mreg_clone_cb,
+							    mlx5_flow_dv_mreg_clone_free_cb);
 			if (!sh->mreg_cp_tbl) {
 				err = ENOMEM;
 				goto error;
@@ -737,6 +737,30 @@ error:
 	return err;
 }
 
+#ifdef HAVE_MLX5DV_DR
+static void
+mlx5_destroy_send_to_kernel_action(struct mlx5_dev_ctx_shared *sh)
+{
+	int i;
+
+	for (i = 0; i < MLX5DR_TABLE_TYPE_MAX; i++) {
+		if (sh->send_to_kernel_action[i].action) {
+			void *action = sh->send_to_kernel_action[i].action;
+
+			mlx5_glue->destroy_flow_action(action);
+			sh->send_to_kernel_action[i].action = NULL;
+		}
+		if (sh->send_to_kernel_action[i].tbl) {
+			struct mlx5_flow_tbl_resource *tbl =
+					sh->send_to_kernel_action[i].tbl;
+
+			mlx5_flow_dv_tbl_resource_release(sh, tbl);
+			sh->send_to_kernel_action[i].tbl = NULL;
+		}
+	}
+}
+#endif /* HAVE_MLX5DV_DR */
+
 /**
  * Destroy DR related data within private structure.
  *
@@ -747,15 +771,23 @@ void
 mlx5_os_free_shared_dr(struct mlx5_priv *priv)
 {
 	struct mlx5_dev_ctx_shared *sh = priv->sh;
-#ifdef HAVE_MLX5DV_DR
-	int i;
-#endif
+	struct mlx5_rxq_ctrl *rxq_ctrl;
+	int i = 0;
 
 	MLX5_ASSERT(sh && sh->refcnt);
 	if (sh->refcnt > 1)
 		return;
+	LIST_FOREACH(rxq_ctrl, &sh->shared_rxqs, next) {
+		DRV_LOG(DEBUG, "port %u Rx Queue %u still referenced",
+			priv->dev_data->port_id, rxq_ctrl->rxq.idx);
+		++i;
+	}
+	if (i > 0)
+		DRV_LOG(WARNING, "port %u some Rx queues still remain %d",
+			priv->dev_data->port_id, i);
 	MLX5_ASSERT(LIST_EMPTY(&sh->shared_rxqs));
 #ifdef HAVE_MLX5DV_DR
+	mlx5_destroy_send_to_kernel_action(sh);
 	if (sh->rx_domain) {
 		mlx5_glue->dr_destroy_domain(sh->rx_domain);
 		sh->rx_domain = NULL;
@@ -789,7 +821,7 @@ mlx5_os_free_shared_dr(struct mlx5_priv *priv)
 			struct mlx5_flow_tbl_resource *tbl =
 					sh->send_to_kernel_action[i].tbl;
 
-			flow_dv_tbl_resource_release(sh, tbl);
+			mlx5_flow_dv_tbl_resource_release(sh, tbl);
 			sh->send_to_kernel_action[i].tbl = NULL;
 		}
 	}
@@ -1317,7 +1349,6 @@ err_secondary:
 	priv->sh = sh;
 	priv->dev_port = spawn->phys_port;
 	priv->pci_dev = spawn->pci_dev;
-	priv->mtu = RTE_ETHER_MTU;
 	/* Some internal functions rely on Netlink sockets, open them now. */
 	priv->nl_socket_rdma = nl_rdma;
 	priv->nl_socket_route =	mlx5_nl_init(NETLINK_ROUTE, 0);
@@ -1562,6 +1593,8 @@ err_secondary:
 	eth_dev->data->mac_addrs = priv->mac;
 	eth_dev->device = dpdk_dev;
 	eth_dev->data->dev_flags |= RTE_ETH_DEV_AUTOFILL_QUEUE_XSTATS;
+	/* Fetch minimum and maximum allowed MTU from the device. */
+	mlx5_get_mtu_bounds(eth_dev, &priv->min_mtu, &priv->max_mtu);
 	/* Configure the first MAC address by default. */
 	if (mlx5_get_mac(eth_dev, &mac.addr_bytes)) {
 		DRV_LOG(ERR,
@@ -1578,7 +1611,7 @@ err_secondary:
 	{
 		char ifname[MLX5_NAMESIZE];
 
-		if (mlx5_get_ifname(eth_dev, &ifname) == 0)
+		if (mlx5_get_ifname(eth_dev, ifname) == 0)
 			DRV_LOG(DEBUG, "port %u ifname is \"%s\"",
 				eth_dev->data->port_id, ifname);
 		else
@@ -1587,13 +1620,13 @@ err_secondary:
 	}
 #endif
 	/* Get actual MTU if possible. */
-	err = mlx5_get_mtu(eth_dev, &priv->mtu);
+	err = mlx5_get_mtu(eth_dev, &eth_dev->data->mtu);
 	if (err) {
 		err = rte_errno;
 		goto error;
 	}
 	DRV_LOG(DEBUG, "port %u MTU is %u", eth_dev->data->port_id,
-		priv->mtu);
+		eth_dev->data->mtu);
 	/* Initialize burst functions to prevent crashes before link-up. */
 	eth_dev->rx_pkt_burst = rte_eth_pkt_burst_dummy;
 	eth_dev->tx_pkt_burst = rte_eth_pkt_burst_dummy;
@@ -1623,16 +1656,17 @@ err_secondary:
 	/* Read link status in case it is up and there will be no event. */
 	mlx5_link_update(eth_dev, 0);
 	/* Watch LSC interrupts between port probe and port start. */
-	priv->sh->port[priv->dev_port - 1].nl_ih_port_id =
-							eth_dev->data->port_id;
+	priv->sh->port[priv->dev_port - 1].nl_ih_port_id = eth_dev->data->port_id;
 	mlx5_set_link_up(eth_dev);
 	for (i = 0; i < MLX5_FLOW_TYPE_MAXI; i++) {
 		icfg[i].release_mem_en = !!sh->config.reclaim_mode;
 		if (sh->config.reclaim_mode)
 			icfg[i].per_core_cache = 0;
 #ifdef HAVE_MLX5_HWS_SUPPORT
-		if (priv->sh->config.dv_flow_en == 2)
+		if (priv->sh->config.dv_flow_en == 2) {
 			icfg[i].size = sizeof(struct rte_flow_hw) + sizeof(struct rte_flow_nt2hws);
+			icfg[i].size += sizeof(struct rte_flow_hw_aux);
+		}
 #endif
 		priv->flows[i] = mlx5_ipool_create(&icfg[i]);
 		if (!priv->flows[i])
@@ -1641,7 +1675,7 @@ err_secondary:
 	/* Create context for virtual machine VLAN workaround. */
 	priv->vmwa_context = mlx5_vlan_vmwa_init(eth_dev, spawn->ifindex);
 	if (mlx5_devx_obj_ops_en(sh)) {
-		priv->obj_ops = devx_obj_ops;
+		priv->obj_ops = mlx5_devx_obj_ops;
 		mlx5_queue_counter_id_prepare(eth_dev);
 		priv->obj_ops.lb_dummy_queue_create =
 					mlx5_rxq_ibv_obj_dummy_lb_create;
@@ -1653,7 +1687,7 @@ err_secondary:
 		err = ENOTSUP;
 		goto error;
 	} else {
-		priv->obj_ops = ibv_obj_ops;
+		priv->obj_ops = mlx5_ibv_obj_ops;
 	}
 	if (sh->config.tx_pp &&
 	    priv->obj_ops.txq_obj_new != mlx5_txq_devx_obj_new) {
@@ -1750,7 +1784,7 @@ err_secondary:
 			}
 		}
 		if (priv->vport_meta_mask)
-			flow_hw_set_port_info(eth_dev);
+			mlx5_flow_hw_set_port_info(eth_dev);
 		if (priv->sh->config.dv_esw_en &&
 		    priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_LEGACY &&
 		    priv->sh->config.dv_xmeta_en != MLX5_XMETA_MODE_META32_HWS) {
@@ -1761,27 +1795,11 @@ err_secondary:
 				goto error;
 		}
 		if (priv->sh->config.dv_esw_en &&
-		    flow_hw_create_vport_action(eth_dev)) {
+		    mlx5_flow_hw_create_vport_action(eth_dev)) {
 			DRV_LOG(ERR, "port %u failed to create vport action",
 				eth_dev->data->port_id);
 			err = EINVAL;
 			goto error;
-		}
-		/*
-		 * If representor matching is disabled, PMD cannot create default flow rules
-		 * to receive traffic for all ports, since implicit source port match is not added.
-		 * Isolated mode is forced.
-		 */
-		if (priv->sh->config.dv_esw_en && !priv->sh->config.repr_matching) {
-			err = mlx5_flow_isolate(eth_dev, 1, NULL);
-			if (err < 0) {
-				err = -err;
-				goto error;
-			}
-			DRV_LOG(WARNING, "port %u ingress traffic is restricted to defined "
-					 "flow rules (isolated mode) since representor "
-					 "matching is disabled",
-				eth_dev->data->port_id);
 		}
 		eth_dev->data->dev_flags |= RTE_ETH_DEV_FLOW_OPS_THREAD_SAFE;
 		return eth_dev;
@@ -1818,7 +1836,7 @@ error:
 		    priv->sh &&
 		    priv->sh->config.dv_flow_en == 2 &&
 		    priv->sh->config.dv_esw_en)
-			flow_hw_destroy_vport_action(eth_dev);
+			mlx5_flow_hw_destroy_vport_action(eth_dev);
 #endif
 		if (priv->sh)
 			mlx5_os_free_shared_dr(priv);
@@ -1826,6 +1844,11 @@ error:
 			close(priv->nl_socket_route);
 		if (priv->vmwa_context)
 			mlx5_vlan_vmwa_exit(priv->vmwa_context);
+		for (i = 0; i < MLX5_FLOW_TYPE_MAXI; i++) {
+			if (!priv->flows[i])
+				continue;
+			mlx5_ipool_destroy(priv->flows[i]);
+		}
 		if (eth_dev && priv->drop_queue.hrxq)
 			mlx5_drop_action_destroy(eth_dev);
 		if (priv->mtr_profile_tbl)
@@ -2274,6 +2297,12 @@ mlx5_device_mpesw_pci_match(struct ibv_device *ibv,
 	return -1;
 }
 
+static inline bool
+mlx5_ignore_pf_representor(const struct rte_eth_devargs *eth_da)
+{
+	return (eth_da->flags & RTE_ETH_DEVARG_REPRESENTOR_IGNORE_PF) != 0;
+}
+
 /**
  * Register a PCI device within bonding.
  *
@@ -2582,6 +2611,8 @@ mlx5_os_pci_probe_pf(struct mlx5_common_device *cdev,
 					if (list[ns].info.port_name == mpesw) {
 						list[ns].info.master = 1;
 						list[ns].info.representor = 0;
+					} else if (mlx5_ignore_pf_representor(&eth_da)) {
+						continue;
 					} else {
 						list[ns].info.master = 0;
 						list[ns].info.representor = 1;
@@ -3042,7 +3073,7 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 		DRV_LOG(ERR, "Failed to allocate intr_handle.");
 		return;
 	}
-	if (sh->cdev->config.probe_opt &&
+	if (sh->cdev->dev_info.probe_opt &&
 	    sh->cdev->dev_info.port_num > 1 &&
 	    !sh->rdma_monitor_supp) {
 		nlsk_fd = mlx5_nl_rdma_monitor_init();
@@ -3067,8 +3098,15 @@ mlx5_os_dev_shared_handler_install(struct mlx5_dev_ctx_shared *sh)
 				close(nlsk_fd);
 				return;
 			}
+			sh->cdev->dev_info.async_mon_ready = 1;
 		} else {
 			close(nlsk_fd);
+			if (sh->cdev->dev_info.probe_opt) {
+				DRV_LOG(INFO, "Failed to create rdma link monitor, disable probe optimization");
+				sh->cdev->dev_info.probe_opt = 0;
+				mlx5_free(sh->cdev->dev_info.port_info);
+				sh->cdev->dev_info.port_info = NULL;
+			}
 		}
 	}
 	nlsk_fd = mlx5_nl_init(NETLINK_ROUTE, RTMGRP_LINK);
@@ -3214,8 +3252,10 @@ mlx5_os_mac_addr_remove(struct rte_eth_dev *dev, uint32_t index)
 
 	if (vf)
 		mlx5_nl_mac_addr_remove(priv->nl_socket_route,
-					mlx5_ifindex(dev), priv->mac_own,
+					mlx5_ifindex(dev),
 					&dev->data->mac_addrs[index], index);
+	if (index < MLX5_MAX_MAC_ADDRESSES)
+		BITFIELD_RESET(priv->mac_own, index);
 }
 
 /**
@@ -3241,8 +3281,11 @@ mlx5_os_mac_addr_add(struct rte_eth_dev *dev, struct rte_ether_addr *mac,
 
 	if (vf)
 		ret = mlx5_nl_mac_addr_add(priv->nl_socket_route,
-					   mlx5_ifindex(dev), priv->mac_own,
+					   mlx5_ifindex(dev),
 					   mac, index);
+	if (!ret)
+		BITFIELD_SET(priv->mac_own, index);
+
 	return ret;
 }
 
@@ -3322,8 +3365,9 @@ void
 mlx5_os_mac_addr_flush(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	const int vf = priv->sh->dev_cap.vf;
 
 	mlx5_nl_mac_addr_flush(priv->nl_socket_route, mlx5_ifindex(dev),
 			       dev->data->mac_addrs,
-			       MLX5_MAX_MAC_ADDRESSES, priv->mac_own);
+			       MLX5_MAX_MAC_ADDRESSES, priv->mac_own, vf);
 }

@@ -11,6 +11,9 @@
 #include "idpf_ethdev.h"
 #include "idpf_rxtx.h"
 #include "../common/rx.h"
+#ifdef RTE_ARCH_X86
+#include "../common/rx_vec_x86.h"
+#endif
 
 #define IDPF_SCALAR_PATH		0
 #define IDPF_VECTOR_PATH		1
@@ -20,13 +23,6 @@
 		RTE_ETH_RX_OFFLOAD_TCP_CKSUM |	\
 		RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM |	\
 		RTE_ETH_RX_OFFLOAD_TIMESTAMP)
-#define IDPF_TX_NO_VECTOR_FLAGS (		\
-		RTE_ETH_TX_OFFLOAD_TCP_TSO |	\
-		RTE_ETH_TX_OFFLOAD_MULTI_SEGS |	\
-		RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		\
-		RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |		\
-		RTE_ETH_TX_OFFLOAD_UDP_CKSUM |	\
-		RTE_ETH_TX_OFFLOAD_TCP_CKSUM)
 
 static inline int
 idpf_tx_desc_done(struct ci_tx_queue *txq, uint16_t idx)
@@ -35,9 +31,9 @@ idpf_tx_desc_done(struct ci_tx_queue *txq, uint16_t idx)
 	if (txq->complq != NULL)
 		return 1;
 
-	return (txq->idpf_tx_ring[idx].qw1 &
-			rte_cpu_to_le_64(IDPF_TXD_QW1_DTYPE_M)) ==
-				rte_cpu_to_le_64(IDPF_TX_DESC_DTYPE_DESC_DONE);
+	return (txq->ci_tx_ring[idx].cmd_type_offset_bsz &
+			rte_cpu_to_le_64(CI_TXD_QW1_DTYPE_M)) ==
+				rte_cpu_to_le_64(CI_TX_DESC_DTYPE_DESC_DONE);
 }
 
 static inline int
@@ -69,9 +65,6 @@ idpf_tx_vec_queue_default(struct ci_tx_queue *txq)
 
 	if (txq->tx_rs_thresh < IDPF_VPMD_TX_MAX_BURST ||
 	    (txq->tx_rs_thresh & 3) != 0)
-		return IDPF_SCALAR_PATH;
-
-	if ((txq->offloads & IDPF_TX_NO_VECTOR_FLAGS) != 0)
 		return IDPF_SCALAR_PATH;
 
 	return IDPF_VECTOR_PATH;
@@ -128,5 +121,13 @@ idpf_tx_vec_dev_check_default(struct rte_eth_dev *dev)
 
 	return IDPF_VECTOR_PATH;
 }
+
+#ifdef RTE_ARCH_X86
+static inline enum rte_vect_max_simd
+idpf_get_max_simd_bitwidth(void)
+{
+	return ci_get_x86_max_simd_bitwidth();
+}
+#endif
 
 #endif /*_IDPF_RXTX_VEC_COMMON_H_*/

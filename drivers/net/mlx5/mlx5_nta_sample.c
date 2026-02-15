@@ -26,7 +26,7 @@ release_chained_flows(struct rte_eth_dev *dev, struct mlx5_flow_head *flow_head,
 
 	if (flow) {
 		flow->nt2hws->chaned_flow = 0;
-		flow_hw_list_destroy(dev, type, (uintptr_t)flow);
+		mlx5_flow_hw_list_destroy(dev, type, (uintptr_t)flow);
 	}
 }
 
@@ -525,6 +525,42 @@ validate_prefix_actions(const struct rte_flow_action *actions)
 	return i < MLX5_HW_MAX_ACTS - 1;
 }
 
+static bool
+validate_sample_terminal_actions(const struct rte_eth_dev *dev,
+				 const struct rte_flow_attr *flow_attr,
+				 const struct rte_flow_action *actions)
+{
+	uint32_t i;
+	const struct mlx5_priv *priv = dev->data->dev_private;
+	const struct rte_flow_action_ethdev *port = NULL;
+	bool is_proxy = MLX5_HW_PORT_IS_PROXY(priv);
+	const struct rte_flow_action *a = NULL;
+
+	for (i = 0; actions[i].type != RTE_FLOW_ACTION_TYPE_END; i++) {
+		if (actions[i].type != RTE_FLOW_ACTION_TYPE_VOID)
+			a = &actions[i];
+	}
+	if (a == NULL)
+		return false;
+	switch (a->type) {
+	case RTE_FLOW_ACTION_TYPE_JUMP:
+	case RTE_FLOW_ACTION_TYPE_QUEUE:
+	case RTE_FLOW_ACTION_TYPE_DROP:
+	case RTE_FLOW_ACTION_TYPE_REPRESENTED_PORT:
+		return true;
+	case RTE_FLOW_ACTION_TYPE_PORT_REPRESENTOR:
+		if (!is_proxy || !flow_attr->transfer)
+			return false;
+		port = a->conf;
+		if (!port || port->port_id != MLX5_REPRESENTED_PORT_ESW_MGR)
+			return false;
+		return true;
+	default:
+		break;
+	}
+	return false;
+}
+
 static void
 action_append(struct rte_flow_action *actions, const struct rte_flow_action *last)
 {
@@ -577,18 +613,18 @@ create_mirror_aux_flows(struct rte_eth_dev *dev,
 	if (qrss_action != NULL && qrss_action->type == RTE_FLOW_ACTION_TYPE_RSS)
 		return rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 			"RSS action is not supported in sample action");
-	ret = flow_hw_create_flow(dev, type, &suffix_attr,
-				  secondary_pattern, suffix_actions,
-				  MLX5_FLOW_LAYER_OUTER_L2, suffix_action_flags,
-				  true, &suffix_flow, error);
+	ret = mlx5_flow_hw_create_flow(dev, type, &suffix_attr,
+				       secondary_pattern, suffix_actions,
+				       MLX5_FLOW_LAYER_OUTER_L2, suffix_action_flags,
+				       true, &suffix_flow, error);
 	if (ret != 0)
 		return ret;
-	ret = flow_hw_create_flow(dev, type, &sample_attr,
-				  secondary_pattern, sample_actions,
-				  MLX5_FLOW_LAYER_OUTER_L2, sample_action_flags,
-				  true, &sample_flow, error);
+	ret = mlx5_flow_hw_create_flow(dev, type, &sample_attr,
+				       secondary_pattern, sample_actions,
+				       MLX5_FLOW_LAYER_OUTER_L2, sample_action_flags,
+				       true, &sample_flow, error);
 	if (ret != 0) {
-		flow_hw_destroy(dev, suffix_flow);
+		mlx5_flow_hw_destroy(dev, suffix_flow);
 		return ret;
 	}
 	suffix_flow->nt2hws->chaned_flow = 1;
@@ -637,8 +673,8 @@ create_sample_flow(struct rte_eth_dev *dev,
 
 	if (random_mask > UINT16_MAX)
 		return NULL;
-	flow_hw_create_flow(dev, type, &sample_attr, sample_pattern, sample_actions,
-			    0, 0, true, &sample_flow, error);
+	mlx5_flow_hw_create_flow(dev, type, &sample_attr, sample_pattern, sample_actions,
+				 0, 0, true, &sample_flow, error);
 	return sample_flow;
 }
 
@@ -732,8 +768,8 @@ mlx5_nta_create_sample_flow(struct rte_eth_dev *dev,
 			.type = RTE_FLOW_ACTION_TYPE_JUMP,
 			.conf = &(struct rte_flow_action_jump) { .group = sample_group }
 		});
-	ret = flow_hw_create_flow(dev, type, attr, pattern, prefix_actions,
-				  item_flags, action_flags, true, &base_flow, error);
+	ret = mlx5_flow_hw_create_flow(dev, type, attr, pattern, prefix_actions,
+				       item_flags, action_flags, true, &base_flow, error);
 	if (ret != 0)
 		goto error;
 	SLIST_INSERT_HEAD(flow_head, base_flow, nt2hws->next);
@@ -783,9 +819,9 @@ mlx5_nta_create_mirror_flow(struct rte_eth_dev *dev,
 			.type = (enum rte_flow_action_type)MLX5_RTE_FLOW_ACTION_TYPE_MIRROR,
 			.conf = mirror_entry_to_mirror_action(mirror_entry)
 		});
-	ret = flow_hw_create_flow(dev, type, attr, pattern, prefix_actions,
-				  item_flags, action_flags,
-				  true, &base_flow, error);
+	ret = mlx5_flow_hw_create_flow(dev, type, attr, pattern, prefix_actions,
+				       item_flags, action_flags,
+				       true, &base_flow, error);
 	if (ret != 0)
 		goto error;
 	SLIST_INSERT_HEAD(flow_head, base_flow, nt2hws->next);
@@ -829,8 +865,13 @@ mlx5_nta_sample_flow_list_create(struct rte_eth_dev *dev,
 	}
 	mlx5_nta_parse_sample_actions(actions, &sample, prefix_actions, suffix_actions);
 	if (!validate_prefix_actions(prefix_actions)) {
-		rte_flow_error_set(error, -EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
+		rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
 				   NULL, "Too many actions");
+		return NULL;
+	}
+	if (!validate_sample_terminal_actions(dev, attr, sample)) {
+		rte_flow_error_set(error, EINVAL, RTE_FLOW_ERROR_TYPE_ACTION,
+				   NULL, "Invalid sample actions");
 		return NULL;
 	}
 	sample_conf = (const struct rte_flow_action_sample *)sample->conf;

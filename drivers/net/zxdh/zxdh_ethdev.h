@@ -11,6 +11,7 @@
 #include <eal_interrupts.h>
 
 #include "zxdh_mtr.h"
+#include "zxdh_flow.h"
 
 /* ZXDH PCI vendor/device ID. */
 #define ZXDH_PCI_VENDOR_ID        0x1cf2
@@ -28,6 +29,10 @@
 #define ZXDH_E310_RDMA_VF_DEVICEID     0x8085
 #define ZXDH_E312_RDMA_PF_DEVICEID     0x8049
 #define ZXDH_E312_RDMA_VF_DEVICEID     0x8060
+#define ZXDH_I510_BOND_PF_DEVICEID     0x8063
+#define ZXDH_I510_OVS_PF_DEVICEID      0x8064
+#define ZXDH_I511_BOND_PF_DEVICEID     0x8066
+#define ZXDH_I511_OVS_PF_DEVICEID      0x8067
 
 #define ZXDH_MAX_UC_MAC_ADDRS     32
 #define ZXDH_MAX_MC_MAC_ADDRS     32
@@ -54,6 +59,7 @@
 #define ZXDH_SLOT_MAX             256
 #define ZXDH_MAX_VF               256
 #define ZXDH_HASHIDX_MAX          6
+#define ZXDH_RSS_HASH_KEY_LEN     40U
 
 union zxdh_virport_num {
 	uint16_t vport;
@@ -88,6 +94,20 @@ struct vfinfo {
 	struct rte_ether_addr vf_mac[ZXDH_MAX_MAC_ADDRS];
 };
 
+struct queue_conf {
+	struct rte_mempool *queue_mp;
+	struct rte_eth_rxconf zxdh_rx_conf;
+	struct rte_eth_txconf zxdh_tx_conf;
+	uint16_t rx_nb_desc;
+	uint16_t tx_nb_desc;
+};
+
+struct zxdh_queue_conf {
+	struct queue_conf conf[ZXDH_QUEUES_NUM_MAX / 2];
+	uint16_t queue_changed;
+	uint16_t rsv;
+};
+
 struct zxdh_hw {
 	struct rte_eth_dev *eth_dev;
 	struct zxdh_pci_common_cfg *common_cfg;
@@ -97,13 +117,16 @@ struct zxdh_hw {
 	struct zxdh_virtqueue **vqs;
 	struct zxdh_chnl_context *channel_context;
 	struct zxdh_dev_shared_data *dev_sd;
+	struct zxdh_dev_nic_shared_data *dev_nic_sd;
 	struct vfinfo *vfinfo;
+	struct zxdh_queue_conf *queue_conf;
+	struct zxdh_net_hdr_dl *net_hdr_dl;
 
 	uint64_t bar_addr[ZXDH_NUM_BARS];
 	uint64_t host_features;
 	uint64_t guest_features;
 	uint32_t speed;
-	uint32_t speed_mode;
+	int32_t speed_mode;
 	uint32_t notify_off_multiplier;
 	union zxdh_virport_num vport;
 	uint16_t max_queue_pairs;
@@ -127,9 +150,12 @@ struct zxdh_hw {
 	uint8_t use_msix;
 	uint8_t duplex;
 	uint8_t is_pf         : 1,
-			rsv : 1,
+			switchoffload : 1,
 			i_mtr_en      : 1,
-			e_mtr_en      : 1;
+			e_mtr_en      : 1,
+			i_flow_en     : 1,
+			e_flow_en     : 1,
+			vxlan_flow_en : 1;
 	uint8_t msg_chan_init;
 	uint8_t phyport;
 	uint8_t panel_id;
@@ -148,8 +174,12 @@ struct zxdh_hw {
 	struct zxdh_vlan_offload_cfg vlan_offload_cfg;
 	uint16_t queue_pool_count;
 	uint16_t queue_pool_start;
+	uint16_t vxlan_fd_num;
+	uint32_t support_speed_modes;
 	uint8_t dl_net_hdr_len;
-	uint8_t rsv1[3];
+	uint8_t autoneg;
+
+	struct dh_flow_list dh_flow_list;
 };
 
 struct zxdh_dtb_shared_data {
@@ -171,9 +201,9 @@ struct zxdh_shared_data {
 	int32_t init_done;       /* Whether primary has done initialization. */
 	unsigned int secondary_cnt; /* Number of secondary processes init'd. */
 
-	int32_t np_init_done;
 	uint32_t dev_refcnt;
 	struct zxdh_dtb_shared_data *dtb_data;
+	struct rte_mempool *flow_mp;
 	struct rte_mempool *mtr_mp;
 	struct rte_mempool *mtr_profile_mp;
 	struct rte_mempool *mtr_policy_mp;
@@ -183,8 +213,13 @@ struct zxdh_shared_data {
 };
 
 struct zxdh_dev_shared_data {
-	uint32_t serial_id;
 	struct zxdh_dtb_shared_data dtb_sd;
+};
+
+struct zxdh_dev_nic_shared_data {
+	uint32_t serial_id;
+	uint16_t dtb_used_num;
+	uint16_t init_done;
 };
 
 struct zxdh_dtb_bulk_dump_info {

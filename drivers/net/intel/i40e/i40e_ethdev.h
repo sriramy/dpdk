@@ -15,6 +15,7 @@
 #include <rte_flow_driver.h>
 #include <rte_tm_driver.h>
 #include "rte_pmd_i40e.h"
+#include <rte_vect.h>
 
 #include "base/i40e_register.h"
 #include "base/i40e_type.h"
@@ -91,11 +92,11 @@
 #define I40E_WRITE_GLB_REG(hw, reg, value)				\
 	do {								\
 		uint32_t ori_val;					\
-		struct rte_eth_dev *dev;				\
-		struct rte_eth_dev_data *dev_data;			\
+		struct rte_eth_dev *_dev;				\
+		struct rte_eth_dev_data *_dev_data;			\
 		ori_val = I40E_READ_REG((hw), (reg));			\
-		dev_data = ((struct i40e_adapter *)hw->back)->pf.dev_data; \
-		dev = &rte_eth_devices[dev_data->port_id];		\
+		_dev_data = ((struct i40e_adapter *)hw->back)->pf.dev_data; \
+		_dev = &rte_eth_devices[_dev_data->port_id];		\
 		I40E_PCI_REG_WRITE(I40E_PCI_REG_ADDR((hw),		\
 						     (reg)), (value));	\
 		if (ori_val != value)					\
@@ -103,7 +104,7 @@
 				    "i40e device %s changed global "	\
 				    "register [0x%08x]. original: 0x%08x, " \
 				    "new: 0x%08x ",			\
-				    (dev->device->name), (reg),		\
+				    (_dev->device->name), (reg),		\
 				    (ori_val), (value));		\
 	} while (0)
 
@@ -1226,6 +1227,29 @@ struct i40e_vsi_vlan_pvid_info {
 #define I40E_MBUF_CHECK_F_TX_SEGMENT     (1ULL << 2)
 #define I40E_MBUF_CHECK_F_TX_OFFLOAD     (1ULL << 3)
 
+enum i40e_rx_func_type {
+	I40E_RX_DEFAULT,
+	I40E_RX_SCATTERED,
+	I40E_RX_BULK_ALLOC,
+	I40E_RX_AVX2,
+	I40E_RX_AVX2_SCATTERED,
+	I40E_RX_AVX512,
+	I40E_RX_AVX512_SCATTERED,
+	I40E_RX_NEON,
+	I40E_RX_NEON_SCATTERED,
+	I40E_RX_ALTIVEC,
+	I40E_RX_ALTIVEC_SCATTERED,
+};
+
+enum i40e_tx_func_type {
+	I40E_TX_DEFAULT,
+	I40E_TX_SCALAR_SIMPLE,
+	I40E_TX_AVX2,
+	I40E_TX_AVX512,
+	I40E_TX_NEON,
+	I40E_TX_ALTIVEC,
+};
+
 /*
  * Structure to store private data for each PF/VF instance.
  */
@@ -1242,9 +1266,11 @@ struct i40e_adapter {
 	bool tx_simple_allowed;
 	bool tx_vec_allowed;
 
+	enum i40e_rx_func_type rx_func_type;
+	enum i40e_tx_func_type tx_func_type;
+
 	uint64_t mbuf_check; /* mbuf check flags. */
 	uint16_t max_pkt_len; /* Maximum packet length */
-	eth_tx_burst_t tx_pkt_burst;
 
 	/* For PTP */
 	struct rte_timecounter systime_tc;
@@ -1260,12 +1286,6 @@ struct i40e_adapter {
 
 	/* For RSS reta table update */
 	uint8_t rss_reta_updated;
-
-	/* used only on x86, zero on other architectures */
-	bool rx_use_avx2;
-	bool rx_use_avx512;
-	bool tx_use_avx2;
-	bool tx_use_avx512;
 };
 
 /**

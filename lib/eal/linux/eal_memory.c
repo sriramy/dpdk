@@ -20,9 +20,6 @@
 #include <limits.h>
 #include <signal.h>
 #include <setjmp.h>
-#ifdef F_ADD_SEALS /* if file sealing is supported, so is memfd */
-#define MEMFD_SUPPORTED
-#endif
 #ifdef RTE_EAL_NUMA_AWARE_HUGEPAGES
 #include <numa.h>
 #include <numaif.h>
@@ -340,8 +337,13 @@ map_all_hugepages(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi,
 
 		hf->file_id = i;
 		hf->size = hugepage_sz;
-		eal_get_hugefile_path(hf->filepath, sizeof(hf->filepath),
-				hpi->hugedir, hf->file_id);
+		if (eal_get_hugefile_path(hf->filepath, sizeof(hf->filepath), hpi->hugedir,
+				hf->file_id) == NULL) {
+			EAL_LOG(DEBUG, "%s(): huge file path '%s' truncated",
+				__func__, hf->filepath);
+			goto out;
+		}
+
 		hf->filepath[sizeof(hf->filepath) - 1] = '\0';
 
 		/* try to create hugepage file */
@@ -434,8 +436,9 @@ find_numasocket(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi)
 	unsigned i, hp_count = 0;
 	uint64_t virt_addr;
 	char buf[BUFSIZ];
-	char hugedir_str[PATH_MAX];
+	char *hugedir_str;
 	FILE *f;
+	int ret;
 
 	f = fopen("/proc/self/numa_maps", "r");
 	if (f == NULL) {
@@ -444,8 +447,15 @@ find_numasocket(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi)
 		return 0;
 	}
 
-	snprintf(hugedir_str, sizeof(hugedir_str),
-			"%s/%s", hpi->hugedir, eal_get_hugefile_prefix());
+	ret = asprintf(&hugedir_str, "%s/%s",
+			hpi->hugedir, eal_get_hugefile_prefix());
+	if (ret < 0) {
+		EAL_LOG(ERR, "%s(): failed to store hugepage path", __func__);
+		hugedir_str = NULL;
+		goto error;
+	}
+
+	ret = -1;
 
 	/* parse numa map */
 	while (fgets(buf, sizeof(buf), f) != NULL) {
@@ -501,12 +511,11 @@ find_numasocket(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi)
 	if (hp_count < hpi->num_pages[0])
 		goto error;
 
-	fclose(f);
-	return 0;
-
+	ret = 0;
 error:
+	free(hugedir_str);
 	fclose(f);
-	return -1;
+	return ret;
 }
 
 static int
@@ -1161,9 +1170,7 @@ eal_legacy_hugepage_init(void)
 		size_t mem_sz;
 		struct rte_memseg_list *msl;
 		int n_segs, fd, flags;
-#ifdef MEMFD_SUPPORTED
 		int memfd;
-#endif
 		uint64_t page_sz;
 
 		/* nohuge mode is legacy mode */
@@ -1188,7 +1195,6 @@ eal_legacy_hugepage_init(void)
 		fd = -1;
 		flags = MAP_PRIVATE | MAP_ANONYMOUS;
 
-#ifdef MEMFD_SUPPORTED
 		/* create a memfd and store it in the segment fd table */
 		memfd = memfd_create("nohuge", 0);
 		if (memfd < 0) {
@@ -1213,7 +1219,6 @@ eal_legacy_hugepage_init(void)
 				flags = MAP_SHARED;
 			}
 		}
-#endif
 		/* preallocate address space for the memory, so that it can be
 		 * fit into the DMA mask.
 		 */
@@ -1967,7 +1972,7 @@ rte_eal_memseg_init(void)
 	if (!internal_conf->legacy_mem && rte_socket_count() > 1) {
 		EAL_LOG(WARNING, "DPDK is running on a NUMA system, but is compiled without NUMA support.");
 		EAL_LOG(WARNING, "This will have adverse consequences for performance and usability.");
-		EAL_LOG(WARNING, "Please use --"OPT_LEGACY_MEM" option, or recompile with NUMA support.");
+		EAL_LOG(WARNING, "Please use --legacy-mem option, or recompile with NUMA support.");
 	}
 #endif
 

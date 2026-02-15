@@ -226,7 +226,7 @@ static int eth_igc_allmulticast_enable(struct rte_eth_dev *dev);
 static int eth_igc_allmulticast_disable(struct rte_eth_dev *dev);
 static int eth_igc_mtu_set(struct rte_eth_dev *dev, uint16_t mtu);
 static int eth_igc_stats_get(struct rte_eth_dev *dev,
-			struct rte_eth_stats *rte_stats);
+			struct rte_eth_stats *rte_stats, struct eth_queue_stats *qstats);
 static int eth_igc_xstats_get(struct rte_eth_dev *dev,
 			struct rte_eth_xstat *xstats, unsigned int n);
 static int eth_igc_xstats_get_by_id(struct rte_eth_dev *dev,
@@ -1313,14 +1313,14 @@ eth_igc_close(struct rte_eth_dev *dev)
 	struct e1000_hw *hw = IGC_DEV_PRIVATE_HW(dev);
 	struct igc_adapter *adapter = IGC_DEV_PRIVATE(dev);
 	int retry = 0;
-	int ret = 0;
+	int retval = 0;
 
 	PMD_INIT_FUNC_TRACE();
 	if (rte_eal_process_type() != RTE_PROC_PRIMARY)
 		return 0;
 
 	if (!adapter->stopped)
-		ret = eth_igc_stop(dev);
+		retval = eth_igc_stop(dev);
 
 	igc_flow_flush(dev, NULL);
 	igc_clear_all_filter(dev);
@@ -1343,7 +1343,7 @@ eth_igc_close(struct rte_eth_dev *dev)
 	/* Reset any pending lock */
 	igc_reset_swfw_lock(hw);
 
-	return ret;
+	return retval;
 }
 
 static void
@@ -2029,7 +2029,8 @@ igc_read_queue_stats_register(struct rte_eth_dev *dev)
 }
 
 static int
-eth_igc_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *rte_stats)
+eth_igc_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *rte_stats,
+		struct eth_queue_stats *qstats)
 {
 	struct igc_adapter *igc = IGC_DEV_PRIVATE(dev);
 	struct e1000_hw *hw = IGC_DEV_PRIVATE_HW(dev);
@@ -2068,19 +2069,21 @@ eth_igc_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *rte_stats)
 	rte_stats->obytes   = stats->gotc;
 
 	/* Get per-queue statuses */
-	for (i = 0; i < IGC_QUEUE_PAIRS_NUM; i++) {
-		/* GET TX queue statuses */
-		int map_id = igc->txq_stats_map[i];
-		if (map_id >= 0) {
-			rte_stats->q_opackets[map_id] += queue_stats->pqgptc[i];
-			rte_stats->q_obytes[map_id] += queue_stats->pqgotc[i];
-		}
-		/* Get RX queue statuses */
-		map_id = igc->rxq_stats_map[i];
-		if (map_id >= 0) {
-			rte_stats->q_ipackets[map_id] += queue_stats->pqgprc[i];
-			rte_stats->q_ibytes[map_id] += queue_stats->pqgorc[i];
-			rte_stats->q_errors[map_id] += queue_stats->rqdpc[i];
+	if (qstats) {
+		for (i = 0; i < IGC_QUEUE_PAIRS_NUM; i++) {
+			/* GET TX queue statuses */
+			int map_id = igc->txq_stats_map[i];
+			if (map_id >= 0) {
+				qstats->q_opackets[map_id] += queue_stats->pqgptc[i];
+				qstats->q_obytes[map_id] += queue_stats->pqgotc[i];
+			}
+			/* Get RX queue statuses */
+			map_id = igc->rxq_stats_map[i];
+			if (map_id >= 0) {
+				qstats->q_ipackets[map_id] += queue_stats->pqgprc[i];
+				qstats->q_ibytes[map_id] += queue_stats->pqgorc[i];
+				qstats->q_errors[map_id] += queue_stats->rqdpc[i];
+			}
 		}
 	}
 
@@ -2556,6 +2559,7 @@ eth_igc_rss_hash_conf_get(struct rte_eth_dev *dev,
 		/* read RSS key from register */
 		for (i = 0; i < IGC_HKEY_MAX_INDEX; i++)
 			hash_key[i] = E1000_READ_REG_LE_VALUE(hw, E1000_RSSRK(i));
+		rss_conf->rss_key_len = IGC_HKEY_MAX_INDEX * sizeof(uint32_t);
 	}
 
 	/* get RSS functions configured in MRQC register */
@@ -2810,6 +2814,12 @@ eth_igc_timesync_read_time(struct rte_eth_dev *dev, struct timespec *ts)
 {
 	struct e1000_hw *hw = IGC_DEV_PRIVATE_HW(dev);
 
+	/*
+	 * Reading the SYSTIML register latches the upper 32 bits to the SYSTIMH
+	 * shadow register for coherent access. As long as we read SYSTIML first
+	 * followed by SYSTIMH, we avoid race conditions where the time rolls
+	 * over between the two register reads.
+	 */
 	ts->tv_nsec = E1000_READ_REG(hw, E1000_SYSTIML);
 	ts->tv_sec = E1000_READ_REG(hw, E1000_SYSTIMH);
 
@@ -2969,10 +2979,10 @@ eth_igc_timesync_disable(struct rte_eth_dev *dev)
 static int
 eth_igc_read_clock(__rte_unused struct rte_eth_dev *dev, uint64_t *clock)
 {
-	struct timespec system_time;
+	struct timespec ts;
 
-	clock_gettime(CLOCK_REALTIME, &system_time);
-	*clock = system_time.tv_sec * NSEC_PER_SEC + system_time.tv_nsec;
+	eth_igc_timesync_read_time(dev, &ts);
+	*clock = rte_timespec_to_ns(&ts);
 
 	return 0;
 }

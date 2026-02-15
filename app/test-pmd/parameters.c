@@ -121,6 +121,8 @@ enum {
 	TESTPMD_OPT_ENABLE_DROP_EN_NUM,
 #define TESTPMD_OPT_DISABLE_RSS "disable-rss"
 	TESTPMD_OPT_DISABLE_RSS_NUM,
+#define TESTPMD_OPT_ENABLE_RSS "enable-rss"
+	TESTPMD_OPT_ENABLE_RSS_NUM,
 #define TESTPMD_OPT_PORT_TOPOLOGY "port-topology"
 	TESTPMD_OPT_PORT_TOPOLOGY_NUM,
 #define TESTPMD_OPT_FORWARD_MODE "forward-mode"
@@ -310,6 +312,7 @@ static const struct option long_options[] = {
 	NO_ARG(TESTPMD_OPT_ENABLE_HW_QINQ_STRIP),
 	NO_ARG(TESTPMD_OPT_ENABLE_DROP_EN),
 	NO_ARG(TESTPMD_OPT_DISABLE_RSS),
+	NO_ARG(TESTPMD_OPT_ENABLE_RSS),
 	REQUIRED_ARG(TESTPMD_OPT_PORT_TOPOLOGY),
 	REQUIRED_ARG(TESTPMD_OPT_FORWARD_MODE),
 	NO_ARG(TESTPMD_OPT_RSS_IP),
@@ -454,6 +457,7 @@ usage(char* progname)
 	printf("  --enable-hw-qinq-strip: enable hardware qinq strip.\n");
 	printf("  --enable-drop-en: enable per queue packet drop.\n");
 	printf("  --disable-rss: disable rss.\n");
+	printf("  --enable-rss: Force rss even for single-queue operation.\n");
 	printf("  --port-topology=<paired|chained|loop>: set port topology (paired "
 	       "is default).\n");
 	printf("  --forward-mode=N: set forwarding mode (N: %s).\n",
@@ -773,42 +777,42 @@ parse_ringnuma_config(const char *q_arg)
 }
 
 static int
-parse_event_printing_config(const char *optarg, int enable)
+parse_event_printing_config(const char *event_arg, int enable)
 {
 	uint32_t mask = 0;
 
-	if (!strcmp(optarg, "unknown"))
+	if (!strcmp(event_arg, "unknown"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_UNKNOWN;
-	else if (!strcmp(optarg, "intr_lsc"))
+	else if (!strcmp(event_arg, "intr_lsc"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_INTR_LSC;
-	else if (!strcmp(optarg, "queue_state"))
+	else if (!strcmp(event_arg, "queue_state"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_QUEUE_STATE;
-	else if (!strcmp(optarg, "intr_reset"))
+	else if (!strcmp(event_arg, "intr_reset"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_INTR_RESET;
-	else if (!strcmp(optarg, "vf_mbox"))
+	else if (!strcmp(event_arg, "vf_mbox"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_VF_MBOX;
-	else if (!strcmp(optarg, "ipsec"))
+	else if (!strcmp(event_arg, "ipsec"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_IPSEC;
-	else if (!strcmp(optarg, "macsec"))
+	else if (!strcmp(event_arg, "macsec"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_MACSEC;
-	else if (!strcmp(optarg, "intr_rmv"))
+	else if (!strcmp(event_arg, "intr_rmv"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_INTR_RMV;
-	else if (!strcmp(optarg, "dev_probed"))
+	else if (!strcmp(event_arg, "dev_probed"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_NEW;
-	else if (!strcmp(optarg, "dev_released"))
+	else if (!strcmp(event_arg, "dev_released"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_DESTROY;
-	else if (!strcmp(optarg, "flow_aged"))
+	else if (!strcmp(event_arg, "flow_aged"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_FLOW_AGED;
-	else if (!strcmp(optarg, "err_recovering"))
+	else if (!strcmp(event_arg, "err_recovering"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_ERR_RECOVERING;
-	else if (!strcmp(optarg, "recovery_success"))
+	else if (!strcmp(event_arg, "recovery_success"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_RECOVERY_SUCCESS;
-	else if (!strcmp(optarg, "recovery_failed"))
+	else if (!strcmp(event_arg, "recovery_failed"))
 		mask = UINT32_C(1) << RTE_ETH_EVENT_RECOVERY_FAILED;
-	else if (!strcmp(optarg, "all"))
+	else if (!strcmp(event_arg, "all"))
 		mask = ~UINT32_C(0);
 	else {
-		fprintf(stderr, "Invalid event: %s\n", optarg);
+		fprintf(stderr, "Invalid event: %s\n", event_arg);
 		return -1;
 	}
 	if (enable)
@@ -920,6 +924,9 @@ parse_link_speed(int n)
 	case 400000:
 		speed |= RTE_ETH_LINK_SPEED_400G;
 		break;
+	case 800000:
+		speed |= RTE_ETH_LINK_SPEED_800G;
+		break;
 	case 100:
 	case 10:
 	default:
@@ -960,13 +967,18 @@ launch_args_parse(int argc, char** argv)
 			exit(EXIT_SUCCESS);
 			break;
 		case TESTPMD_OPT_CMDLINE_FILE_NUM:
-			echo_cmdline_file = true;
-			/* fall-through */
 		case TESTPMD_OPT_CMDLINE_FILE_NOECHO_NUM:
-			printf("CLI commands to be read from %s\n",
-				optarg);
-			strlcpy(cmdline_filename, optarg,
-				sizeof(cmdline_filename));
+			if (cmdline_file_count >= RTE_DIM(cmdline_files)) {
+				fprintf(stderr, "Too many cmdline files specified (maximum %zu)\n",
+					RTE_DIM(cmdline_files));
+				exit(EXIT_FAILURE);
+			}
+			printf("CLI commands to be read from %s\n", optarg);
+			strlcpy(cmdline_files[cmdline_file_count].filename, optarg,
+				sizeof(cmdline_files[cmdline_file_count].filename));
+			cmdline_files[cmdline_file_count].echo =
+				(opt == TESTPMD_OPT_CMDLINE_FILE_NUM);
+			cmdline_file_count++;
 			break;
 		case TESTPMD_OPT_TX_FIRST_NUM:
 			printf("Ports to start sending a burst of "
@@ -975,11 +987,10 @@ launch_args_parse(int argc, char** argv)
 			break;
 		case TESTPMD_OPT_STATS_PERIOD_NUM: {
 			char *end = NULL;
-			unsigned int n;
 
 			n = strtoul(optarg, &end, 10);
 			if ((optarg[0] == '\0') || (end == NULL) ||
-					(*end != '\0'))
+					(*end != '\0') || n <= 0 || n >= UINT16_MAX)
 				rte_exit(EXIT_FAILURE, "Invalid stats-period value\n");
 
 			stats_period = n;
@@ -1244,7 +1255,16 @@ launch_args_parse(int argc, char** argv)
 			rx_drop_en = 1;
 			break;
 		case TESTPMD_OPT_DISABLE_RSS_NUM:
+			if (force_rss)
+				rte_exit(EXIT_FAILURE, "Invalid option combination, %s and %s\n",
+						TESTPMD_OPT_DISABLE_RSS, TESTPMD_OPT_ENABLE_RSS);
 			rss_hf = 0;
+			break;
+		case TESTPMD_OPT_ENABLE_RSS_NUM:
+			if (rss_hf == 0)
+				rte_exit(EXIT_FAILURE, "Invalid option combination, %s and %s\n",
+						TESTPMD_OPT_DISABLE_RSS, TESTPMD_OPT_ENABLE_RSS);
+			force_rss = true;
 			break;
 		case TESTPMD_OPT_PORT_TOPOLOGY_NUM:
 			if (!strcmp(optarg, "paired"))
@@ -1318,7 +1338,6 @@ launch_args_parse(int argc, char** argv)
 			break;
 		case TESTPMD_OPT_HAIRPIN_MODE_NUM: {
 			char *end = NULL;
-			unsigned int n;
 
 			errno = 0;
 			n = strtoul(optarg, &end, 0);
@@ -1753,6 +1772,27 @@ launch_args_parse(int argc, char** argv)
 			"The multi-process option '%s(%d)' should be less than '%s(%u)'\n",
 			TESTPMD_OPT_PROC_ID, proc_id,
 			TESTPMD_OPT_NUM_PROCS, num_procs);
+
+	/* check for multiple segments without scattered flag enabled */
+	if (mbuf_data_size_n > 1 && (rx_offloads & RTE_ETH_RX_OFFLOAD_SCATTER) == 0)
+		TESTPMD_LOG(WARNING, "Warning: multiple mbuf sizes specified but scattered Rx not enabled\n");
+
+	/* check for max packet size greater than mbuf size, without scatter or multi-seg flags */
+	if (max_rx_pkt_len > mbuf_data_size[0]) {
+		if ((rx_offloads & RTE_ETH_RX_OFFLOAD_SCATTER) == 0)
+			TESTPMD_LOG(WARNING, "Warning: max-pkt-len (%u) is greater than mbuf size (%u) without scattered Rx enabled\n",
+					max_rx_pkt_len, mbuf_data_size[0]);
+		if ((tx_offloads & RTE_ETH_TX_OFFLOAD_MULTI_SEGS) == 0)
+			TESTPMD_LOG(WARNING, "Warning: max-pkt-len (%u) is greater than mbuf size (%u) without multi-segment Tx enabled\n",
+					max_rx_pkt_len, mbuf_data_size[0]);
+	}
+
+	/* check for scattered Rx enabled without also having multi-segment Tx */
+	if ((rx_offloads & RTE_ETH_RX_OFFLOAD_SCATTER) != 0 &&
+			(tx_offloads & RTE_ETH_TX_OFFLOAD_MULTI_SEGS) == 0) {
+		TESTPMD_LOG(WARNING, "Warning: Scattered RX offload enabled, but TX multi-segment support not enabled.\n");
+		TESTPMD_LOG(WARNING, "         Multi-segment packets can be received but not transmitted.\n");
+	}
 
 	/* Set offload configuration from command line parameters. */
 	rx_mode.offloads = rx_offloads;

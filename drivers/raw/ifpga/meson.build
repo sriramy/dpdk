@@ -11,13 +11,15 @@ rtdep = dependency('librt', required: false)
 if not rtdep.found()
     rtdep = cc.find_library('rt', required: false)
 endif
-if not rtdep.found()
+if not rtdep.found() or not cc.links(min_c_code, dependencies: rtdep)
     build = false
     reason = 'missing dependency, "librt"'
     subdir_done()
 endif
 
 ext_deps += rtdep
+
+cflags += no_shadow_cflag
 
 subdir('base')
 

@@ -51,7 +51,8 @@ static int axgbe_dev_link_update(struct rte_eth_dev *dev,
 static int axgbe_dev_get_regs(struct rte_eth_dev *dev,
 			      struct rte_dev_reg_info *regs);
 static int axgbe_dev_stats_get(struct rte_eth_dev *dev,
-				struct rte_eth_stats *stats);
+				struct rte_eth_stats *stats,
+				struct eth_queue_stats *qstats);
 static int axgbe_dev_stats_reset(struct rte_eth_dev *dev);
 static int axgbe_dev_xstats_get(struct rte_eth_dev *dev,
 				struct rte_eth_xstat *stats,
@@ -184,6 +185,7 @@ static const struct axgbe_xstats axgbe_xstats_strings[] = {
 
 #define	Fam17h	0x17
 #define	Fam19h	0x19
+#define	Fam1Ah	0x1A
 
 #define	CPUID_VENDOR_AuthenticAMD_ebx	0x68747541
 #define	CPUID_VENDOR_AuthenticAMD_ecx	0x444d4163
@@ -1133,7 +1135,7 @@ axgbe_dev_xstats_reset(struct rte_eth_dev *dev)
 
 static int
 axgbe_dev_stats_get(struct rte_eth_dev *dev,
-		    struct rte_eth_stats *stats)
+		    struct rte_eth_stats *stats, struct eth_queue_stats *qstats)
 {
 	struct axgbe_rx_queue *rxq;
 	struct axgbe_tx_queue *txq;
@@ -1148,14 +1150,16 @@ axgbe_dev_stats_get(struct rte_eth_dev *dev,
 	for (i = 0; i < dev->data->nb_rx_queues; i++) {
 		rxq = dev->data->rx_queues[i];
 		if (rxq) {
-			stats->q_ipackets[i] = rxq->pkts;
 			stats->ipackets += rxq->pkts;
-			stats->q_ibytes[i] = rxq->bytes;
 			stats->ibytes += rxq->bytes;
 			stats->rx_nombuf += rxq->rx_mbuf_alloc_failed;
-			stats->q_errors[i] = rxq->errors
-				+ rxq->rx_mbuf_alloc_failed;
 			stats->ierrors += rxq->errors;
+
+			if (qstats != NULL && i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
+				qstats->q_ipackets[i] = rxq->pkts;
+				qstats->q_ibytes[i] = rxq->bytes;
+				qstats->q_errors[i] = rxq->errors + rxq->rx_mbuf_alloc_failed;
+			}
 		} else {
 			PMD_DRV_LOG_LINE(DEBUG, "Rx queue not setup for port %d",
 					dev->data->port_id);
@@ -1165,11 +1169,14 @@ axgbe_dev_stats_get(struct rte_eth_dev *dev,
 	for (i = 0; i < dev->data->nb_tx_queues; i++) {
 		txq = dev->data->tx_queues[i];
 		if (txq) {
-			stats->q_opackets[i] = txq->pkts;
 			stats->opackets += txq->pkts;
-			stats->q_obytes[i] = txq->bytes;
 			stats->obytes += txq->bytes;
 			stats->oerrors += txq->errors;
+
+			if (qstats != NULL && i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
+				qstats->q_opackets[i] = txq->pkts;
+				qstats->q_obytes[i] = txq->bytes;
+			}
 		} else {
 			PMD_DRV_LOG_LINE(DEBUG, "Tx queue not setup for port %d",
 					dev->data->port_id);
@@ -1736,6 +1743,7 @@ axgbe_timesync_disable(struct rte_eth_dev *dev)
 {
 	struct axgbe_port *pdata = dev->data->dev_private;
 	unsigned int mac_tscr = 0;
+	unsigned int value = 0;
 
 	/*disable timestamp for all pkts*/
 	AXGMAC_SET_BITS(mac_tscr, MAC_TSCR, TSENALL, 0);
@@ -1745,6 +1753,11 @@ axgbe_timesync_disable(struct rte_eth_dev *dev)
 	AXGMAC_SET_BITS(mac_tscr, MAC_TSCR, TSCFUPDT, 0);
 	/*disable time stamp*/
 	AXGMAC_SET_BITS(mac_tscr, MAC_TSCR, TSENA, 0);
+
+	value = AXGMAC_IOREAD(pdata, MAC_TSCR);
+	value |= mac_tscr;
+	AXGMAC_IOWRITE(pdata, MAC_TSCR, value);
+
 	return 0;
 }
 
@@ -2240,8 +2253,8 @@ eth_axgbe_dev_init(struct rte_eth_dev *eth_dev)
 	__cpuid(0x0, eax, ebx, ecx, edx);
 
 	if (ebx == CPUID_VENDOR_AuthenticAMD_ebx &&
-		edx == CPUID_VENDOR_AuthenticAMD_edx &&
-		ecx == CPUID_VENDOR_AuthenticAMD_ecx) {
+	    edx == CPUID_VENDOR_AuthenticAMD_edx &&
+	    ecx == CPUID_VENDOR_AuthenticAMD_ecx) {
 		int unknown_cpu = 0;
 		eax = 0, ebx = 0, ecx = 0, edx = 0;
 
@@ -2252,33 +2265,48 @@ eth_axgbe_dev_init(struct rte_eth_dev *eth_dev)
 
 		switch (cpu_family) {
 		case Fam17h:
-		/* V1000/R1000 */
-		if (cpu_model >= 0x10 && cpu_model <= 0x1F) {
-			pdata->xpcs_window_def_reg = PCS_V2_RV_WINDOW_DEF;
-			pdata->xpcs_window_sel_reg = PCS_V2_RV_WINDOW_SELECT;
-		/* EPYC 3000 */
-		} else if (cpu_model >= 0x01 && cpu_model <= 0x0F) {
-			pdata->xpcs_window_def_reg = PCS_V2_WINDOW_DEF;
-			pdata->xpcs_window_sel_reg = PCS_V2_WINDOW_SELECT;
-		} else {
-			unknown_cpu = 1;
-		}
-		break;
+			/* V1000/R1000 */
+			if (cpu_model >= 0x10 && cpu_model <= 0x1F) {
+				pdata->xpcs_window_def_reg = PCS_V2_RV_WINDOW_DEF;
+				pdata->xpcs_window_sel_reg = PCS_V2_RV_WINDOW_SELECT;
+				/* EPYC 3000 */
+			} else if (cpu_model >= 0x01 && cpu_model <= 0x0F) {
+				pdata->xpcs_window_def_reg = PCS_V2_WINDOW_DEF;
+				pdata->xpcs_window_sel_reg = PCS_V2_WINDOW_SELECT;
+			} else {
+				unknown_cpu = 1;
+			}
+			break;
 		case Fam19h:
-		/* V3000 (Yellow Carp) */
-		if (cpu_model >= 0x44 && cpu_model <= 0x47) {
-			pdata->xpcs_window_def_reg = PCS_V2_YC_WINDOW_DEF;
-			pdata->xpcs_window_sel_reg = PCS_V2_YC_WINDOW_SELECT;
+			/* V3000 (Yellow Carp) */
+			if (cpu_model >= 0x44 && cpu_model <= 0x47) {
+				pdata->xpcs_window_def_reg = PCS_V2_YC_WINDOW_DEF;
+				pdata->xpcs_window_sel_reg = PCS_V2_YC_WINDOW_SELECT;
 
-			/* Yellow Carp devices do not need cdr workaround */
-			pdata->vdata->an_cdr_workaround = 0;
+				/* Yellow Carp devices do not need cdr workaround */
+				pdata->vdata->an_cdr_workaround = 0;
 
-			/* Yellow Carp devices do not need rrc */
-			pdata->vdata->enable_rrc = 0;
-		} else {
-			unknown_cpu = 1;
-		}
-		break;
+				/* Yellow Carp devices do not need rrc */
+				pdata->vdata->enable_rrc = 0;
+			} else {
+				unknown_cpu = 1;
+			}
+			break;
+		case Fam1Ah:
+			/* V4000 (krackan2e) */
+			if (cpu_model == 0x68) {
+				pdata->xpcs_window_def_reg = PCS_KR_WINDOW_DEF;
+				pdata->xpcs_window_sel_reg = PCS_KR_WINDOW_SELECT;
+
+				/* V4000-Krackan2e devices do not need cdr workaround */
+				pdata->vdata->an_cdr_workaround = 0;
+
+				/* V4000-Krackan2e devices do not need rrc */
+				pdata->vdata->enable_rrc = 0;
+			} else {
+				unknown_cpu = 1;
+			}
+			break;
 		default:
 			unknown_cpu = 1;
 			break;

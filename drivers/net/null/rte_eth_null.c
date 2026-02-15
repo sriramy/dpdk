@@ -319,7 +319,8 @@ eth_dev_info(struct rte_eth_dev *dev,
 }
 
 static int
-eth_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
+eth_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats,
+		struct eth_queue_stats *qstats)
 {
 	const struct pmd_internals *internal = dev->data->dev_private;
 	unsigned int i;
@@ -331,9 +332,9 @@ eth_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
 		stats->ipackets += pkts;
 		stats->ibytes += bytes;
 
-		if (i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
-			stats->q_ipackets[i] = pkts;
-			stats->q_ibytes[i] = bytes;
+		if (qstats != NULL && i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
+			qstats->q_ipackets[i] = pkts;
+			qstats->q_ibytes[i] = bytes;
 		}
 	}
 
@@ -344,12 +345,12 @@ eth_stats_get(struct rte_eth_dev *dev, struct rte_eth_stats *stats)
 		pkts = rte_atomic_load_explicit(&q->tx_pkts, rte_memory_order_relaxed);
 		bytes = rte_atomic_load_explicit(&q->tx_bytes, rte_memory_order_relaxed);
 
-		stats->opackets = pkts;
-		stats->obytes = bytes;
+		stats->opackets += pkts;
+		stats->obytes += bytes;
 
-		if (i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
-			stats->q_opackets[i] = pkts;
-			stats->q_obytes[i] = bytes;
+		if (qstats != NULL && i < RTE_ETHDEV_QUEUE_STAT_CNTRS) {
+			qstats->q_opackets[i] = pkts;
+			qstats->q_obytes[i] = bytes;
 		}
 	}
 

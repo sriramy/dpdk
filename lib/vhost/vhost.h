@@ -69,17 +69,13 @@
 			    sizeof(struct vring_packed_desc))
 #define PACKED_BATCH_MASK (PACKED_BATCH_SIZE - 1)
 
-#ifdef VHOST_GCC_UNROLL_PRAGMA
-#define vhost_for_each_try_unroll(iter, val, size) _Pragma("GCC unroll 4") \
-	for (iter = val; iter < size; iter++)
-#endif
-
-#ifdef VHOST_CLANG_UNROLL_PRAGMA
+#if defined __clang__
 #define vhost_for_each_try_unroll(iter, val, size) _Pragma("unroll 4") \
 	for (iter = val; iter < size; iter++)
-#endif
-
-#ifndef vhost_for_each_try_unroll
+#elif defined __GNUC__
+#define vhost_for_each_try_unroll(iter, val, size) _Pragma("GCC unroll 4") \
+	for (iter = val; iter < size; iter++)
+#else
 #define vhost_for_each_try_unroll(iter, val, num) \
 	for (iter = val; iter < num; iter++)
 #endif
@@ -265,8 +261,9 @@ struct vhost_async {
 };
 
 #define VHOST_RECONNECT_VERSION		0x0
-#define VHOST_MAX_VRING			0x100
 #define VHOST_MAX_QUEUE_PAIRS		0x80
+/* Max vring count: 2 per queue pair plus 1 control queue */
+#define VHOST_MAX_VRING			(VHOST_MAX_QUEUE_PAIRS * 2 + 1)
 
 struct __rte_cache_aligned vhost_reconnect_vring {
 	uint16_t last_avail_idx;
@@ -505,7 +502,7 @@ struct __rte_cache_aligned virtio_net {
 
 	int			extbuf;
 	int			linearbuf;
-	struct vhost_virtqueue	*virtqueue[VHOST_MAX_QUEUE_PAIRS * 2];
+	struct vhost_virtqueue	*virtqueue[VHOST_MAX_VRING];
 
 	rte_rwlock_t	iotlb_pending_lock;
 	struct vhost_iotlb_entry *iotlb_pool;

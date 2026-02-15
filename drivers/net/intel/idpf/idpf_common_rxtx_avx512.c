@@ -22,7 +22,7 @@ idpf_singleq_rearm_common(struct idpf_rx_queue *rxq)
 	rxdp += rxq->rxrearm_start;
 
 	/* Pull 'n' more MBUFs into the software ring */
-	if (rte_mempool_get_bulk(rxq->mp,
+	if (rte_mbuf_raw_alloc_bulk(rxq->mp,
 				 (void *)rxp,
 				 IDPF_RXQ_REARM_THRESH) < 0) {
 		if (rxq->rxrearm_nb + IDPF_RXQ_REARM_THRESH >=
@@ -551,7 +551,7 @@ idpf_splitq_rearm_common(struct idpf_rx_queue *rx_bufq)
 	rxdp += rx_bufq->rxrearm_start;
 
 	/* Pull 'n' more MBUFs into the software ring */
-	if (rte_mempool_get_bulk(rx_bufq->mp,
+	if (rte_mbuf_raw_alloc_bulk(rx_bufq->mp,
 				 (void *)rxp,
 				 IDPF_RXQ_REARM_THRESH) < 0) {
 		if (rx_bufq->rxrearm_nb + IDPF_RXQ_REARM_THRESH >=
@@ -1000,13 +1000,12 @@ idpf_dp_splitq_recv_pkts_avx512(void *rx_queue, struct rte_mbuf **rx_pkts,
 }
 
 static __rte_always_inline void
-idpf_singleq_vtx1(volatile struct idpf_base_tx_desc *txdp,
+idpf_singleq_vtx1(volatile struct ci_tx_desc *txdp,
 	  struct rte_mbuf *pkt, uint64_t flags)
 {
-	uint64_t high_qw =
-		(IDPF_TX_DESC_DTYPE_DATA |
-		 ((uint64_t)flags  << IDPF_TXD_QW1_CMD_S) |
-		 ((uint64_t)pkt->data_len << IDPF_TXD_QW1_TX_BUF_SZ_S));
+	uint64_t high_qw = (CI_TX_DESC_DTYPE_DATA |
+		 ((uint64_t)flags << CI_TXD_QW1_CMD_S) |
+		 ((uint64_t)pkt->data_len << CI_TXD_QW1_TX_BUF_SZ_S));
 
 	__m128i descriptor = _mm_set_epi64x(high_qw,
 					    pkt->buf_iova + pkt->data_off);
@@ -1016,36 +1015,27 @@ idpf_singleq_vtx1(volatile struct idpf_base_tx_desc *txdp,
 #define IDPF_TX_LEN_MASK 0xAA
 #define IDPF_TX_OFF_MASK 0x55
 static __rte_always_inline void
-idpf_singleq_vtx(volatile struct idpf_base_tx_desc *txdp,
+idpf_singleq_vtx(volatile struct ci_tx_desc *txdp,
 	 struct rte_mbuf **pkt, uint16_t nb_pkts,  uint64_t flags)
 {
-	const uint64_t hi_qw_tmpl = (IDPF_TX_DESC_DTYPE_DATA  |
-			((uint64_t)flags  << IDPF_TXD_QW1_CMD_S));
+	const uint64_t hi_qw_tmpl = (CI_TX_DESC_DTYPE_DATA  | (flags << CI_TXD_QW1_CMD_S));
 
 	/* if unaligned on 32-bit boundary, do one to align */
 	if (((uintptr_t)txdp & 0x1F) != 0 && nb_pkts != 0) {
 		idpf_singleq_vtx1(txdp, *pkt, flags);
-		nb_pkts--, txdp++, pkt++;
+		nb_pkts--; txdp++; pkt++;
 	}
 
 	/* do 4 at a time while possible, in bursts */
 	for (; nb_pkts > 3; txdp += 4, pkt += 4, nb_pkts -= 4) {
-		uint64_t hi_qw3 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[3]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw2 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[2]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw1 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[1]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
-		uint64_t hi_qw0 =
-			hi_qw_tmpl |
-			((uint64_t)pkt[0]->data_len <<
-			 IDPF_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw3 = hi_qw_tmpl |
+			((uint64_t)pkt[3]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw2 = hi_qw_tmpl |
+			((uint64_t)pkt[2]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw1 = hi_qw_tmpl |
+			((uint64_t)pkt[1]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
+		uint64_t hi_qw0 = hi_qw_tmpl |
+			((uint64_t)pkt[0]->data_len << CI_TXD_QW1_TX_BUF_SZ_S);
 
 		__m512i desc0_3 =
 			_mm512_set_epi64
@@ -1063,7 +1053,7 @@ idpf_singleq_vtx(volatile struct idpf_base_tx_desc *txdp,
 	/* do any last ones */
 	while (nb_pkts) {
 		idpf_singleq_vtx1(txdp, *pkt, flags);
-		txdp++, pkt++, nb_pkts--;
+		txdp++; pkt++; nb_pkts--;
 	}
 }
 
@@ -1072,11 +1062,11 @@ idpf_singleq_xmit_fixed_burst_vec_avx512(void *tx_queue, struct rte_mbuf **tx_pk
 					 uint16_t nb_pkts)
 {
 	struct ci_tx_queue *txq = tx_queue;
-	volatile struct idpf_base_tx_desc *txdp;
+	volatile struct ci_tx_desc *txdp;
 	struct ci_tx_entry_vec *txep;
 	uint16_t n, nb_commit, tx_id;
-	uint64_t flags = IDPF_TX_DESC_CMD_EOP;
-	uint64_t rs = IDPF_TX_DESC_CMD_RS | flags;
+	uint64_t flags = CI_TX_DESC_CMD_EOP;
+	uint64_t rs = CI_TX_DESC_CMD_RS | flags;
 
 	/* cross rx_thresh boundary is not allowed */
 	nb_pkts = RTE_MIN(nb_pkts, txq->tx_rs_thresh);
@@ -1090,7 +1080,7 @@ idpf_singleq_xmit_fixed_burst_vec_avx512(void *tx_queue, struct rte_mbuf **tx_pk
 		return 0;
 
 	tx_id = txq->tx_tail;
-	txdp = &txq->idpf_tx_ring[tx_id];
+	txdp = &txq->ci_tx_ring[tx_id];
 	txep = (void *)txq->sw_ring;
 	txep += tx_id;
 
@@ -1112,7 +1102,7 @@ idpf_singleq_xmit_fixed_burst_vec_avx512(void *tx_queue, struct rte_mbuf **tx_pk
 		txq->tx_next_rs = (uint16_t)(txq->tx_rs_thresh - 1);
 
 		/* avoid reach the end of ring */
-		txdp = &txq->idpf_tx_ring[tx_id];
+		txdp = &txq->ci_tx_ring[tx_id];
 		txep = (void *)txq->sw_ring;
 		txep += tx_id;
 	}
@@ -1123,9 +1113,8 @@ idpf_singleq_xmit_fixed_burst_vec_avx512(void *tx_queue, struct rte_mbuf **tx_pk
 
 	tx_id = (uint16_t)(tx_id + nb_commit);
 	if (tx_id > txq->tx_next_rs) {
-		txq->idpf_tx_ring[txq->tx_next_rs].qw1 |=
-			rte_cpu_to_le_64(((uint64_t)IDPF_TX_DESC_CMD_RS) <<
-					 IDPF_TXD_QW1_CMD_S);
+		txq->ci_tx_ring[txq->tx_next_rs].cmd_type_offset_bsz |=
+			rte_cpu_to_le_64(((uint64_t)CI_TX_DESC_CMD_RS) << CI_TXD_QW1_CMD_S);
 		txq->tx_next_rs =
 			(uint16_t)(txq->tx_next_rs + txq->tx_rs_thresh);
 	}
@@ -1226,7 +1215,7 @@ idpf_splitq_vtx(volatile struct idpf_flex_tx_sched_desc *txdp,
 	/* if unaligned on 32-bit boundary, do one to align */
 	if (((uintptr_t)txdp & 0x1F) != 0 && nb_pkts != 0) {
 		idpf_splitq_vtx1(txdp, *pkt, flags);
-		nb_pkts--, txdp++, pkt++;
+		nb_pkts--; txdp++; pkt++;
 	}
 
 	/* do 4 at a time while possible, in bursts */
@@ -1264,7 +1253,7 @@ idpf_splitq_vtx(volatile struct idpf_flex_tx_sched_desc *txdp,
 	/* do any last ones */
 	while (nb_pkts) {
 		idpf_splitq_vtx1(txdp, *pkt, flags);
-		txdp++, pkt++, nb_pkts--;
+		txdp++; pkt++; nb_pkts--;
 	}
 }
 
@@ -1376,6 +1365,5 @@ idpf_qc_tx_vec_avx512_setup(struct ci_tx_queue *txq)
 	if (!txq)
 		return 0;
 
-	txq->vector_tx = true;
 	return 0;
 }

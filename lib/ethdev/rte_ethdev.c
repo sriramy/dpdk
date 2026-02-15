@@ -73,16 +73,16 @@ static const struct rte_eth_xstats_name_off eth_dev_stats_strings[] = {
 #define RTE_NB_STATS RTE_DIM(eth_dev_stats_strings)
 
 static const struct rte_eth_xstats_name_off eth_dev_rxq_stats_strings[] = {
-	{"packets", offsetof(struct rte_eth_stats, q_ipackets)},
-	{"bytes", offsetof(struct rte_eth_stats, q_ibytes)},
-	{"errors", offsetof(struct rte_eth_stats, q_errors)},
+	{"packets", offsetof(struct eth_queue_stats, q_ipackets)},
+	{"bytes", offsetof(struct eth_queue_stats, q_ibytes)},
+	{"errors", offsetof(struct eth_queue_stats, q_errors)},
 };
 
 #define RTE_NB_RXQ_STATS RTE_DIM(eth_dev_rxq_stats_strings)
 
 static const struct rte_eth_xstats_name_off eth_dev_txq_stats_strings[] = {
-	{"packets", offsetof(struct rte_eth_stats, q_opackets)},
-	{"bytes", offsetof(struct rte_eth_stats, q_obytes)},
+	{"packets", offsetof(struct eth_queue_stats, q_opackets)},
+	{"bytes", offsetof(struct eth_queue_stats, q_obytes)},
 };
 #define RTE_NB_TXQ_STATS RTE_DIM(eth_dev_txq_stats_strings)
 
@@ -1077,6 +1077,9 @@ rte_eth_speed_bitflag(uint32_t speed, int duplex)
 		break;
 	case RTE_ETH_SPEED_NUM_400G:
 		ret = RTE_ETH_LINK_SPEED_400G;
+		break;
+	case RTE_ETH_SPEED_NUM_800G:
+		ret = RTE_ETH_LINK_SPEED_800G;
 		break;
 	default:
 		ret = 0;
@@ -2468,7 +2471,6 @@ rte_eth_rx_queue_setup(uint16_t port_id, uint16_t rx_queue_id,
 	if (local_conf.offloads & RTE_ETH_RX_OFFLOAD_TCP_LRO) {
 		uint32_t overhead_len;
 		uint32_t max_rx_pktlen;
-		int ret;
 
 		overhead_len = eth_dev_get_overhead_len(dev_info.max_rx_pktlen,
 				dev_info.max_mtu);
@@ -3018,7 +3020,8 @@ rte_eth_promiscuous_enable(uint16_t port_id)
 		return -ENOTSUP;
 
 	diag = dev->dev_ops->promiscuous_enable(dev);
-	dev->data->promiscuous = (diag == 0) ? 1 : 0;
+	if (diag == 0)
+		dev->data->promiscuous = 1;
 
 	diag = eth_err(port_id, diag);
 
@@ -3086,7 +3089,8 @@ rte_eth_allmulticast_enable(uint16_t port_id)
 	if (dev->dev_ops->allmulticast_enable == NULL)
 		return -ENOTSUP;
 	diag = dev->dev_ops->allmulticast_enable(dev);
-	dev->data->all_multicast = (diag == 0) ? 1 : 0;
+	if (diag == 0)
+		dev->data->all_multicast = 1;
 
 	diag = eth_err(port_id, diag);
 
@@ -3248,6 +3252,9 @@ rte_eth_link_speed_to_str(uint32_t link_speed)
 	case RTE_ETH_SPEED_NUM_400G:
 		ret = "400 Gbps";
 		break;
+	case RTE_ETH_SPEED_NUM_800G:
+		ret = "800 Gbps";
+		break;
 	case RTE_ETH_SPEED_NUM_UNKNOWN:
 		ret = "Unknown";
 		break;
@@ -3285,43 +3292,66 @@ rte_eth_link_to_str(char *str, size_t len, const struct rte_eth_link *eth_link)
 	if (eth_link->link_status == RTE_ETH_LINK_DOWN)
 		ret = snprintf(str, len, "Link down");
 	else
-		ret = snprintf(str, len, "Link up at %s %s %s",
+		ret = snprintf(str, len, "Link up at %s %s %s %s",
 			rte_eth_link_speed_to_str(eth_link->link_speed),
 			(eth_link->link_duplex == RTE_ETH_LINK_FULL_DUPLEX) ?
 			"FDX" : "HDX",
 			(eth_link->link_autoneg == RTE_ETH_LINK_AUTONEG) ?
-			"Autoneg" : "Fixed");
+			"Autoneg" : "Fixed",
+			rte_eth_link_connector_to_str(eth_link->link_connector));
 
 	rte_eth_trace_link_to_str(len, eth_link, str, ret);
 
 	return ret;
 }
 
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_eth_link_connector_to_str, 25.11)
+const char *
+rte_eth_link_connector_to_str(enum rte_eth_link_connector link_connector)
+{
+	static const char * const link_connector_str[] = {
+		[RTE_ETH_LINK_CONNECTOR_NONE] = "None",
+		[RTE_ETH_LINK_CONNECTOR_TP] = "Twisted Pair",
+		[RTE_ETH_LINK_CONNECTOR_AUI] = "Attachment Unit Interface",
+		[RTE_ETH_LINK_CONNECTOR_MII] = "Media Independent Interface",
+		[RTE_ETH_LINK_CONNECTOR_FIBER] = "Fiber",
+		[RTE_ETH_LINK_CONNECTOR_BNC] = "BNC",
+		[RTE_ETH_LINK_CONNECTOR_DAC] = "Direct Attach Copper",
+		[RTE_ETH_LINK_CONNECTOR_SGMII] = "SGMII",
+		[RTE_ETH_LINK_CONNECTOR_QSGMII] = "QSGMII",
+		[RTE_ETH_LINK_CONNECTOR_XFI] = "XFI",
+		[RTE_ETH_LINK_CONNECTOR_SFI] = "SFI",
+		[RTE_ETH_LINK_CONNECTOR_XLAUI] = "XLAUI",
+		[RTE_ETH_LINK_CONNECTOR_GAUI] = "GAUI",
+		[RTE_ETH_LINK_CONNECTOR_XAUI] = "XAUI",
+		[RTE_ETH_LINK_CONNECTOR_CAUI] = "CAUI",
+		[RTE_ETH_LINK_CONNECTOR_LAUI] = "LAUI",
+		[RTE_ETH_LINK_CONNECTOR_SFP] = "SFP",
+		[RTE_ETH_LINK_CONNECTOR_SFP_DD] = "SFP-DD",
+		[RTE_ETH_LINK_CONNECTOR_SFP_PLUS] = "SFP+",
+		[RTE_ETH_LINK_CONNECTOR_SFP28] = "SFP28",
+		[RTE_ETH_LINK_CONNECTOR_QSFP] = "QSFP",
+		[RTE_ETH_LINK_CONNECTOR_QSFP_PLUS] = "QSFP+",
+		[RTE_ETH_LINK_CONNECTOR_QSFP28] = "QSFP28",
+		[RTE_ETH_LINK_CONNECTOR_QSFP56] = "QSFP56",
+		[RTE_ETH_LINK_CONNECTOR_QSFP_DD] = "QSFP-DD",
+		[RTE_ETH_LINK_CONNECTOR_OTHER] = "Other",
+	};
+	const char *str = NULL;
+
+	if (link_connector < ((enum rte_eth_link_connector)RTE_DIM(link_connector_str)))
+		str = link_connector_str[link_connector];
+
+	return str;
+}
+
 RTE_EXPORT_SYMBOL(rte_eth_stats_get)
 int
 rte_eth_stats_get(uint16_t port_id, struct rte_eth_stats *stats)
 {
-	struct rte_eth_dev *dev;
-	int ret;
-
-	RTE_ETH_VALID_PORTID_OR_ERR_RET(port_id, -ENODEV);
-	dev = &rte_eth_devices[port_id];
-
-	if (stats == NULL) {
-		RTE_ETHDEV_LOG_LINE(ERR, "Cannot get ethdev port %u stats to NULL",
-			port_id);
-		return -EINVAL;
-	}
-
-	memset(stats, 0, sizeof(*stats));
-
-	if (dev->dev_ops->stats_get == NULL)
-		return -ENOTSUP;
-	stats->rx_nombuf = dev->data->rx_mbuf_alloc_failed;
-	ret = eth_err(port_id, dev->dev_ops->stats_get(dev, stats));
+	int ret = eth_stats_qstats_get(port_id, stats, NULL);
 
 	rte_eth_trace_stats_get(port_id, stats, ret);
-
 	return ret;
 }
 
@@ -3458,9 +3488,10 @@ eth_basic_stats_get_names(struct rte_eth_dev *dev,
 	uint16_t num_q;
 
 	for (idx = 0; idx < RTE_NB_STATS; idx++) {
-		strlcpy(xstats_names[cnt_used_entries].name,
-			eth_dev_stats_strings[idx].name,
-			sizeof(xstats_names[0].name));
+		if (strlcpy(xstats_names[cnt_used_entries].name, eth_dev_stats_strings[idx].name,
+				sizeof(xstats_names[0].name)) >= sizeof(xstats_names[0].name))
+			RTE_ETHDEV_LOG_LINE(ERR, "statistic name '%s' will be truncated",
+				xstats_names[cnt_used_entries].name);
 		cnt_used_entries++;
 	}
 
@@ -3470,10 +3501,16 @@ eth_basic_stats_get_names(struct rte_eth_dev *dev,
 	num_q = RTE_MIN(dev->data->nb_rx_queues, RTE_ETHDEV_QUEUE_STAT_CNTRS);
 	for (id_queue = 0; id_queue < num_q; id_queue++) {
 		for (idx = 0; idx < RTE_NB_RXQ_STATS; idx++) {
-			snprintf(xstats_names[cnt_used_entries].name,
-				sizeof(xstats_names[0].name),
-				"rx_q%u_%s",
-				id_queue, eth_dev_rxq_stats_strings[idx].name);
+			unsigned int cc;
+
+			cc = snprintf(xstats_names[cnt_used_entries].name,
+				sizeof(xstats_names[0].name), "rx_q%u_%s", id_queue,
+				eth_dev_rxq_stats_strings[idx].name);
+
+			/* could only happen if a long string was added */
+			if (cc >= sizeof(xstats_names[0].name))
+				RTE_ETHDEV_LOG_LINE(ERR, "truncated rxq stat string '%s'",
+					eth_dev_rxq_stats_strings[idx].name);
 			cnt_used_entries++;
 		}
 
@@ -3481,10 +3518,14 @@ eth_basic_stats_get_names(struct rte_eth_dev *dev,
 	num_q = RTE_MIN(dev->data->nb_tx_queues, RTE_ETHDEV_QUEUE_STAT_CNTRS);
 	for (id_queue = 0; id_queue < num_q; id_queue++) {
 		for (idx = 0; idx < RTE_NB_TXQ_STATS; idx++) {
-			snprintf(xstats_names[cnt_used_entries].name,
-				sizeof(xstats_names[0].name),
-				"tx_q%u_%s",
-				id_queue, eth_dev_txq_stats_strings[idx].name);
+			unsigned int cc;
+
+			cc = snprintf(xstats_names[cnt_used_entries].name,
+				sizeof(xstats_names[0].name), "tx_q%u_%s", id_queue,
+				eth_dev_txq_stats_strings[idx].name);
+			if (cc >= sizeof(xstats_names[0].name))
+				RTE_ETHDEV_LOG_LINE(ERR, "truncated txq stat string '%s'",
+					eth_dev_txq_stats_strings[idx].name);
 			cnt_used_entries++;
 		}
 	}
@@ -3664,12 +3705,13 @@ eth_basic_stats_get(uint16_t port_id, struct rte_eth_xstat *xstats)
 {
 	struct rte_eth_dev *dev;
 	struct rte_eth_stats eth_stats;
+	struct eth_queue_stats queue_stats;
 	unsigned int count = 0, i, q;
 	uint64_t val, *stats_ptr;
 	uint16_t nb_rxqs, nb_txqs;
 	int ret;
 
-	ret = rte_eth_stats_get(port_id, &eth_stats);
+	ret = eth_stats_qstats_get(port_id, &eth_stats, &queue_stats);
 	if (ret < 0)
 		return ret;
 
@@ -3692,7 +3734,7 @@ eth_basic_stats_get(uint16_t port_id, struct rte_eth_xstat *xstats)
 	/* per-rxq stats */
 	for (q = 0; q < nb_rxqs; q++) {
 		for (i = 0; i < RTE_NB_RXQ_STATS; i++) {
-			stats_ptr = RTE_PTR_ADD(&eth_stats,
+			stats_ptr = RTE_PTR_ADD(&queue_stats,
 					eth_dev_rxq_stats_strings[i].offset +
 					q * sizeof(uint64_t));
 			val = *stats_ptr;
@@ -3703,7 +3745,7 @@ eth_basic_stats_get(uint16_t port_id, struct rte_eth_xstat *xstats)
 	/* per-txq stats */
 	for (q = 0; q < nb_txqs; q++) {
 		for (i = 0; i < RTE_NB_TXQ_STATS; i++) {
-			stats_ptr = RTE_PTR_ADD(&eth_stats,
+			stats_ptr = RTE_PTR_ADD(&queue_stats,
 					eth_dev_txq_stats_strings[i].offset +
 					q * sizeof(uint64_t));
 			val = *stats_ptr;

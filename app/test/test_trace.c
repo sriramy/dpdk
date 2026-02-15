@@ -179,7 +179,7 @@ static int
 test_generic_trace_points(void)
 {
 	uint8_t arr[RTE_TRACE_BLOB_LEN_MAX];
-	int tmp;
+	int tmp = 0;
 	int i;
 
 	for (i = 0; i < RTE_TRACE_BLOB_LEN_MAX; i++)
@@ -254,4 +254,4 @@ test_trace(void)
 
 #endif /* !RTE_EXEC_ENV_WINDOWS */
 
-REGISTER_FAST_TEST(trace_autotest, true, true, test_trace);
+REGISTER_FAST_TEST(trace_autotest, NOHUGE_OK, ASAN_OK, test_trace);

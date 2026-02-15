@@ -45,7 +45,7 @@ void rtl_hw_disable_mac_mcu_bps(struct rtl_hw *hw);
 void rtl_write_mac_mcu_ram_code(struct rtl_hw *hw, const u16 *entry,
 				u16 entry_cnt);
 
-void rtl_hw_initialize(struct rtl_hw *hw);
+void rtl_hw_initialize(struct rtl_hw *hw, struct rte_pci_device *pci_dev);
 
 bool rtl_is_speed_mode_valid(struct rtl_hw *hw, u32 speed);
 
@@ -79,6 +79,9 @@ void rtl8168_set_mcu_ocp_bit(struct rtl_hw *hw, u16 addr, u16 mask);
 u64 rtl_get_hw_mcu_patch_code_ver(struct rtl_hw *hw);
 u64 rtl_get_bin_mcu_patch_code_ver(const u16 *entry, u16 entry_cnt);
 
+void rtl8125_store_rss_key(struct rtl_hw *hw);
+void rtl8125_config_rss(struct rtl_hw *hw, u16 nb_rx_queues);
+
 extern const struct rtl_hw_ops rtl8168g_ops;
 extern const struct rtl_hw_ops rtl8168h_ops;
 extern const struct rtl_hw_ops rtl8168ep_ops;
@@ -88,6 +91,7 @@ extern const struct rtl_hw_ops rtl8125a_ops;
 extern const struct rtl_hw_ops rtl8125b_ops;
 extern const struct rtl_hw_ops rtl8125bp_ops;
 extern const struct rtl_hw_ops rtl8125d_ops;
+extern const struct rtl_hw_ops rtl9151a_ops;
 extern const struct rtl_hw_ops rtl8126a_ops;
 extern const struct rtl_hw_ops rtl8168kb_ops;
 extern const struct rtl_hw_ops rtl8127_ops;
@@ -132,12 +136,12 @@ extern const struct rtl_hw_ops rtl8125cp_ops;
 #define NIC_RAMCODE_VERSION_CFG_METHOD_54  (0x0013)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_55  (0x0001)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_56  (0x0027)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_57  (0x0027)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_58  (0x0008)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_69  (0x0023)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_57  (0x0034)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_58  (0x0024)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_60  (0x0003)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_70  (0x0033)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_71  (0x0060)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_91  (0x0036)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_91  (0x0051)
 
 #define RTL_MAC_MCU_PAGE_SIZE 256
 #define RTL_DEFAULT_MTU       1500

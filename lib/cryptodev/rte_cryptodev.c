@@ -102,7 +102,10 @@ crypto_cipher_algorithm_strings[] = {
 	[RTE_CRYPTO_CIPHER_SM4_CTR]	= "sm4-ctr",
 	[RTE_CRYPTO_CIPHER_SM4_CFB]	= "sm4-cfb",
 	[RTE_CRYPTO_CIPHER_SM4_OFB]	= "sm4-ofb",
-	[RTE_CRYPTO_CIPHER_SM4_XTS]	= "sm4-xts"
+	[RTE_CRYPTO_CIPHER_SM4_XTS]	= "sm4-xts",
+	[RTE_CRYPTO_CIPHER_SNOW5G_NEA4]	= "snow5g-nea4",
+	[RTE_CRYPTO_CIPHER_AES_NEA5]	= "aes-nea5",
+	[RTE_CRYPTO_CIPHER_ZUC_NEA6]	= "zuc-nea6",
 };
 
 /**
@@ -162,6 +165,10 @@ crypto_auth_algorithm_strings[] = {
 
 	[RTE_CRYPTO_AUTH_SHAKE_128]	 = "shake-128",
 	[RTE_CRYPTO_AUTH_SHAKE_256]	 = "shake-256",
+
+	[RTE_CRYPTO_AUTH_SNOW5G_NIA4] = "snow5g-nia4",
+	[RTE_CRYPTO_AUTH_AES_NIA5]	 = "aes-nia5",
+	[RTE_CRYPTO_AUTH_ZUC_NIA6]	 = "zuc-nia6",
 };
 
 /**
@@ -175,6 +182,10 @@ crypto_aead_algorithm_strings[] = {
 	[RTE_CRYPTO_AEAD_AES_GCM]	= "aes-gcm",
 	[RTE_CRYPTO_AEAD_CHACHA20_POLY1305] = "chacha20-poly1305",
 	[RTE_CRYPTO_AEAD_SM4_GCM]   = "sm4-gcm",
+
+	[RTE_CRYPTO_AEAD_SNOW5G_NCA4] = "snow5g-nca4",
+	[RTE_CRYPTO_AEAD_AES_NCA5]    = "aes-nca5",
+	[RTE_CRYPTO_AEAD_ZUC_NCA6]    = "zuc-nca6",
 };
 
 
@@ -227,6 +238,66 @@ const char *rte_crypto_asym_ke_strings[] = {
 	[RTE_CRYPTO_ASYM_KE_PUB_KEY_GENERATE] = "pub_key_generate",
 	[RTE_CRYPTO_ASYM_KE_SHARED_SECRET_COMPUTE] = "sharedsecret_compute",
 	[RTE_CRYPTO_ASYM_KE_PUB_KEY_VERIFY] = "pub_ec_key_verify"
+};
+
+/**
+ * Public key size used in PQC ML-KEM based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_kem_pubkey_size)
+const uint16_t rte_crypto_ml_kem_pubkey_size[] = {
+	[RTE_CRYPTO_ML_KEM_512] = 800,
+	[RTE_CRYPTO_ML_KEM_768] = 1184,
+	[RTE_CRYPTO_ML_KEM_1024] = 1568,
+};
+
+/**
+ * Private key size used in PQC ML-KEM based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_kem_privkey_size)
+const uint16_t rte_crypto_ml_kem_privkey_size[] = {
+	[RTE_CRYPTO_ML_KEM_512] = 1632,
+	[RTE_CRYPTO_ML_KEM_768] = 2400,
+	[RTE_CRYPTO_ML_KEM_1024] = 3168,
+};
+
+/**
+ * Cipher size used in PQC ML-KEM based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_kem_cipher_size)
+const uint16_t rte_crypto_ml_kem_cipher_size[] = {
+	[RTE_CRYPTO_ML_KEM_512] = 768,
+	[RTE_CRYPTO_ML_KEM_768] = 1088,
+	[RTE_CRYPTO_ML_KEM_1024] = 1568,
+};
+
+/**
+ * Public key size used in PQC ML-DSA based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_dsa_pubkey_size)
+const uint16_t rte_crypto_ml_dsa_pubkey_size[] = {
+	[RTE_CRYPTO_ML_DSA_44] = 1312,
+	[RTE_CRYPTO_ML_DSA_65] = 1952,
+	[RTE_CRYPTO_ML_DSA_87] = 2592,
+};
+
+/**
+ * Private key size used in PQC ML-DSA based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_dsa_privkey_size)
+const uint16_t rte_crypto_ml_dsa_privkey_size[] = {
+	[RTE_CRYPTO_ML_DSA_44] = 2560,
+	[RTE_CRYPTO_ML_DSA_65] = 4032,
+	[RTE_CRYPTO_ML_DSA_87] = 4896,
+};
+
+/**
+ * Sign size used in PQC ML-KEM based crypto ops.
+ */
+RTE_EXPORT_SYMBOL(rte_crypto_ml_dsa_sign_size)
+const uint16_t rte_crypto_ml_dsa_sign_size[] = {
+	[RTE_CRYPTO_ML_DSA_44] = 2420,
+	[RTE_CRYPTO_ML_DSA_65] = 3309,
+	[RTE_CRYPTO_ML_DSA_87] = 4627,
 };
 
 struct rte_cryptodev_sym_session_pool_private_data {

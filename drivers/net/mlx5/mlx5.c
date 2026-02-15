@@ -182,9 +182,6 @@
 /* HW steering counter's query interval. */
 #define MLX5_HWS_CNT_CYCLE_TIME "svc_cycle_time"
 
-/* Device parameter to control representor matching in ingress/egress flows with HWS. */
-#define MLX5_REPR_MATCHING_EN "repr_matching_en"
-
 /*
  * Alignment of the Tx queue starting address,
  * If not set, using separate umem and MR for each TxQ.
@@ -393,9 +390,6 @@ static const struct mlx5_indexed_pool_config mlx5_ipool_cfg[] = {
 		.type = "mlx5_meter_policy_ipool",
 	},
 };
-
-#define MLX5_FLOW_MIN_ID_POOL_SIZE 512
-#define MLX5_ID_GENERATION_ARRAY_FACTOR 16
 
 #define MLX5_FLOW_TABLE_HLIST_ARRAY_SIZE 1024
 
@@ -989,6 +983,7 @@ int
 mlx5_flex_parser_ecpri_alloc(struct rte_eth_dev *dev)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
+	struct mlx5_hca_flex_attr *attr = &priv->sh->cdev->config.hca_attr.flex;
 	struct mlx5_ecpri_parser_profile *prf =	&priv->sh->ecpri_parser;
 	struct mlx5_devx_graph_node_attr node = {
 		.modify_field_select = 0,
@@ -1002,6 +997,7 @@ mlx5_flex_parser_ecpri_alloc(struct rte_eth_dev *dev)
 		return -ENOTSUP;
 	}
 	node.header_length_mode = MLX5_GRAPH_NODE_LEN_FIXED;
+	node.header_length_field_offset_mode = !attr->header_length_field_mode_wa;
 	/* 8 bytes now: 4B common header + 4B message body header. */
 	node.header_length_base_value = 0x8;
 	/* After MAC layer: Ether / VLAN. */
@@ -1044,23 +1040,10 @@ error:
 	return (rte_errno == 0) ? -ENODEV : -rte_errno;
 }
 
-/*
- * Destroy the flex parser node, including the parser itself, input / output
- * arcs and DW samples. Resources could be reused then.
- *
- * @param dev
- *   Pointer to Ethernet device structure.
- */
-static void
-mlx5_flex_parser_ecpri_release(struct rte_eth_dev *dev)
-{
-	struct mlx5_priv *priv = dev->data->dev_private;
-	struct mlx5_ecpri_parser_profile *prf = &priv->sh->ecpri_parser;
-
-	if (prf->obj)
-		mlx5_devx_cmd_destroy(prf->obj);
-	prf->obj = NULL;
-}
+/* IPv6 SRH header is defined in RFC 8754 */
+#define MLX5_SRH_HEADER_LENGTH_FIELD_OFFSET 8
+#define MLX5_SRH_HEADER_LENGTH_FIELD_SIZE 8
+#define MLX5_SRH_HEADER_LENGTH_SHIFT 3
 
 /*
  * Allocation of a flex parser for srh. Once refcnt is zero, the resources held
@@ -1074,6 +1057,7 @@ mlx5_flex_parser_ecpri_release(struct rte_eth_dev *dev)
 int
 mlx5_alloc_srh_flex_parser(struct rte_eth_dev *dev)
 {
+	static rte_spinlock_t srh_init_sl = RTE_SPINLOCK_INITIALIZER;
 	struct mlx5_devx_graph_node_attr node = {
 		.modify_field_select = 0,
 	};
@@ -1091,23 +1075,29 @@ mlx5_alloc_srh_flex_parser(struct rte_eth_dev *dev)
 		DRV_LOG(ERR, "Dynamic flex parser is not supported on HWS");
 		return -ENOTSUP;
 	}
-	if (rte_atomic_fetch_add_explicit(&priv->sh->srh_flex_parser.refcnt, 1,
-			rte_memory_order_relaxed) + 1 > 1)
-		return 0;
+	rte_spinlock_lock(&srh_init_sl);
+	if (rte_atomic_load_explicit(&priv->sh->srh_flex_parser.refcnt,
+				     rte_memory_order_relaxed) > 0)
+		goto end;
 	priv->sh->srh_flex_parser.flex.devx_fp = mlx5_malloc(MLX5_MEM_ZERO,
 			sizeof(struct mlx5_flex_parser_devx), 0, SOCKET_ID_ANY);
-	if (!priv->sh->srh_flex_parser.flex.devx_fp)
-		return -ENOMEM;
+	if (!priv->sh->srh_flex_parser.flex.devx_fp) {
+		rte_errno = ENOMEM;
+		goto error;
+	}
 	node.header_length_mode = MLX5_GRAPH_NODE_LEN_FIELD;
+	node.header_length_field_offset_mode = !attr->header_length_field_mode_wa;
 	/* Srv6 first two DW are not counted in. */
 	node.header_length_base_value = 0x8;
 	/* The unit is uint64_t. */
-	node.header_length_field_shift = 0x3;
+	node.header_length_field_shift = MLX5_SRH_HEADER_LENGTH_SHIFT;
+	node.header_length_field_offset_mode = !attr->header_length_field_mode_wa;
 	/* Header length is the 2nd byte. */
-	node.header_length_field_offset = 0x8;
-	if (attr->header_length_mask_width < 8)
-		node.header_length_field_offset += 8 - attr->header_length_mask_width;
-	node.header_length_field_mask = 0xF;
+	node.header_length_field_offset = MLX5_SRH_HEADER_LENGTH_FIELD_OFFSET;
+	if (attr->header_length_mask_width < MLX5_SRH_HEADER_LENGTH_FIELD_SIZE)
+		node.header_length_field_offset +=
+			MLX5_SRH_HEADER_LENGTH_FIELD_SIZE - attr->header_length_mask_width;
+	node.header_length_field_mask = mlx5_flex_hdr_len_mask(MLX5_SRH_HEADER_LENGTH_SHIFT, attr);
 	/* One byte next header protocol. */
 	node.next_header_field_size = 0x8;
 	node.in[0].arc_parse_graph_node = MLX5_GRAPH_ARC_NODE_IP;
@@ -1161,12 +1151,22 @@ mlx5_alloc_srh_flex_parser(struct rte_eth_dev *dev)
 						(i + 1) * sizeof(uint32_t) * CHAR_BIT;
 	}
 	priv->sh->srh_flex_parser.flex.map[0].shift = 0;
+	DRV_LOG(NOTICE,
+		"SRH flex parser node object is created successfully. "
+		"Header extension length field size: %d bits\n",
+		attr->header_length_mask_width > MLX5_SRH_HEADER_LENGTH_FIELD_SIZE ?
+		MLX5_SRH_HEADER_LENGTH_FIELD_SIZE : attr->header_length_mask_width);
+end:
+	rte_atomic_fetch_add_explicit(&priv->sh->srh_flex_parser.refcnt, 1,
+				      rte_memory_order_relaxed);
+	rte_spinlock_unlock(&srh_init_sl);
 	return 0;
 error:
 	if (fp)
 		mlx5_devx_cmd_destroy(fp);
 	if (priv->sh->srh_flex_parser.flex.devx_fp)
 		mlx5_free(priv->sh->srh_flex_parser.flex.devx_fp);
+	rte_spinlock_unlock(&srh_init_sl);
 	return (rte_errno == 0) ? -ENODEV : -rte_errno;
 }
 
@@ -1183,7 +1183,7 @@ mlx5_free_srh_flex_parser(struct rte_eth_dev *dev)
 	struct mlx5_priv *priv = dev->data->dev_private;
 	struct mlx5_internal_flex_parser_profile *fp = &priv->sh->srh_flex_parser;
 
-	if (rte_atomic_fetch_sub_explicit(&fp->refcnt, 1, rte_memory_order_relaxed) - 1)
+	if (rte_atomic_fetch_sub_explicit(&fp->refcnt, 1, rte_memory_order_relaxed) > 1)
 		return;
 	mlx5_devx_cmd_destroy(fp->flex.devx_fp->devx_obj);
 	mlx5_free(fp->flex.devx_fp);
@@ -1453,12 +1453,49 @@ mlx5_dev_args_check_handler(const char *key, const char *val, void *opaque)
 		config->cnt_svc.service_core = tmp;
 	} else if (strcmp(MLX5_HWS_CNT_CYCLE_TIME, key) == 0) {
 		config->cnt_svc.cycle_time = tmp;
-	} else if (strcmp(MLX5_REPR_MATCHING_EN, key) == 0) {
-		config->repr_matching = !!tmp;
 	} else if (strcmp(MLX5_TXQ_MEM_ALGN, key) == 0) {
 		config->txq_mem_algn = (uint32_t)tmp;
 	}
 	return 0;
+}
+
+static bool
+mlx5_hws_is_supported(struct mlx5_dev_ctx_shared *sh)
+{
+	return (sh->cdev->config.devx &&
+	       sh->cdev->config.hca_attr.wqe_based_flow_table_sup);
+}
+
+static bool
+mlx5_sws_is_any_supported(struct mlx5_dev_ctx_shared *sh)
+{
+	struct mlx5_common_device *cdev = sh->cdev;
+	struct mlx5_hca_attr *hca_attr = &cdev->config.hca_attr;
+
+	if (hca_attr->rx_sw_owner_v2 || hca_attr->rx_sw_owner)
+		return true;
+
+	if (hca_attr->tx_sw_owner_v2 || hca_attr->tx_sw_owner)
+		return true;
+
+	if (hca_attr->eswitch_manager && (hca_attr->esw_sw_owner_v2 || hca_attr->esw_sw_owner))
+		return true;
+
+	return false;
+}
+
+static bool
+mlx5_kvargs_is_used(struct mlx5_kvargs_ctrl *mkvlist, const char *key)
+{
+	const struct rte_kvargs_pair *pair;
+	uint32_t i;
+
+	for (i = 0; i < mkvlist->kvlist->count; ++i) {
+		pair = &mkvlist->kvlist->pairs[i];
+		if (strcmp(pair->key, key) == 0 && mkvlist->is_used[i])
+			return true;
+	}
+	return false;
 }
 
 /**
@@ -1495,13 +1532,14 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 		MLX5_FDB_DEFAULT_RULE_EN,
 		MLX5_HWS_CNT_SERVICE_CORE,
 		MLX5_HWS_CNT_CYCLE_TIME,
-		MLX5_REPR_MATCHING_EN,
 		MLX5_TXQ_MEM_ALGN,
 		NULL,
 	};
 	int ret = 0;
 	size_t alignment = rte_mem_page_size();
 	uint32_t max_queue_umem_size = MLX5_WQE_SIZE * mlx5_dev_get_max_wq_size(sh);
+	bool hws_is_supported = mlx5_hws_is_supported(sh);
+	bool sws_is_supported = mlx5_sws_is_any_supported(sh);
 
 	if (alignment == (size_t)-1) {
 		alignment = (1 << MLX5_LOG_PAGE_SIZE);
@@ -1512,13 +1550,18 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 	memset(config, 0, sizeof(*config));
 	config->vf_nl_en = 1;
 	config->dv_esw_en = 1;
-	config->dv_flow_en = 1;
+	if (!sws_is_supported && hws_is_supported)
+		config->dv_flow_en = 2;
+	else
+		config->dv_flow_en = 1;
 	config->decap_en = 1;
-	config->allow_duplicate_pattern = 1;
+	if (config->dv_flow_en == 2)
+		config->allow_duplicate_pattern = 0;
+	else
+		config->allow_duplicate_pattern = 1;
 	config->fdb_def_rule = 1;
 	config->cnt_svc.cycle_time = MLX5_CNT_SVC_CYCLE_TIME_DEFAULT;
 	config->cnt_svc.service_core = rte_get_main_lcore();
-	config->repr_matching = 1;
 	config->txq_mem_algn = log2above(alignment);
 	if (mkvlist != NULL) {
 		/* Process parameters. */
@@ -1535,6 +1578,26 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 		DRV_LOG(WARNING, "DV flow is not supported.");
 		config->dv_flow_en = 0;
 	}
+	/* Inform user if DV flow is not supported. */
+	if (config->dv_flow_en == 1 && !sws_is_supported && hws_is_supported) {
+		DRV_LOG(WARNING, "DV flow is not supported. Changing to HWS mode.");
+		config->dv_flow_en = 2;
+	}
+	/* Handle allow_duplicate_pattern based on final dv_flow_en mode.
+	 * HWS mode (dv_flow_en=2) doesn't support duplicate patterns.
+	 * Warn only if user explicitly requested an incompatible setting.
+	 */
+	bool allow_dup_pattern_set = mkvlist != NULL &&
+		mlx5_kvargs_is_used(mkvlist, MLX5_ALLOW_DUPLICATE_PATTERN);
+	if (config->dv_flow_en == 2) {
+		if (config->allow_duplicate_pattern == 1 && allow_dup_pattern_set)
+			DRV_LOG(WARNING, "Duplicate pattern is not supported with HWS. Disabling it.");
+		config->allow_duplicate_pattern = 0;
+	} else if (!allow_dup_pattern_set) {
+		/* Non-HWS mode: set default to 1 only if not explicitly set by user */
+		config->allow_duplicate_pattern = 1;
+	}
+
 	if (config->dv_esw_en && !sh->dev_cap.dv_esw_en) {
 		DRV_LOG(DEBUG, "E-Switch DV flow is not supported.");
 		config->dv_esw_en = 0;
@@ -1552,11 +1615,6 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 			"Metadata mode %u is not supported (no E-Switch).",
 			config->dv_xmeta_en);
 		config->dv_xmeta_en = MLX5_XMETA_MODE_LEGACY;
-	}
-	if (config->dv_flow_en != 2 && !config->repr_matching) {
-		DRV_LOG(DEBUG, "Disabling representor matching is valid only "
-			       "when HW Steering is enabled.");
-		config->repr_matching = 1;
 	}
 	if (config->tx_pp && !sh->dev_cap.txpp_en) {
 		DRV_LOG(ERR, "Packet pacing is not supported.");
@@ -1612,7 +1670,6 @@ mlx5_shared_dev_ctx_args_config(struct mlx5_dev_ctx_shared *sh,
 	DRV_LOG(DEBUG, "\"allow_duplicate_pattern\" is %u.",
 		config->allow_duplicate_pattern);
 	DRV_LOG(DEBUG, "\"fdb_def_rule_en\" is %u.", config->fdb_def_rule);
-	DRV_LOG(DEBUG, "\"repr_matching_en\" is %u.", config->repr_matching);
 	DRV_LOG(DEBUG, "\"txq_mem_algn\" is %u.", config->txq_mem_algn);
 	return 0;
 }
@@ -1669,7 +1726,9 @@ mlx5_init_hws_flow_tags_registers(struct mlx5_dev_ctx_shared *sh)
 	unset |= 1 << mlx5_regc_index(REG_C_6);
 	if (sh->config.dv_esw_en)
 		unset |= 1 << mlx5_regc_index(REG_C_0);
-	if (meta_mode == MLX5_XMETA_MODE_META32_HWS)
+	if (meta_mode == MLX5_XMETA_MODE_META32_HWS ||
+	    mlx5_vport_rx_metadata_passing_enabled(sh) ||
+	    mlx5_vport_tx_metadata_passing_enabled(sh))
 		unset |= 1 << mlx5_regc_index(REG_C_1);
 	masks &= ~unset;
 	for (i = 0, j = 0; i < MLX5_FLOW_HW_TAGS_MAX; i++) {
@@ -2155,11 +2214,11 @@ mlx5_alloc_hw_group_hash_list(struct mlx5_priv *priv)
 	sh->groups = mlx5_hlist_create
 			(s, MLX5_FLOW_TABLE_HLIST_ARRAY_SIZE,
 			 false, true, sh,
-			 flow_hw_grp_create_cb,
-			 flow_hw_grp_match_cb,
-			 flow_hw_grp_remove_cb,
-			 flow_hw_grp_clone_cb,
-			 flow_hw_grp_clone_free_cb);
+			 mlx5_flow_hw_grp_create_cb,
+			 mlx5_flow_hw_grp_match_cb,
+			 mlx5_flow_hw_grp_remove_cb,
+			 mlx5_flow_hw_grp_clone_cb,
+			 mlx5_flow_hw_grp_clone_free_cb);
 	if (!sh->groups) {
 		DRV_LOG(ERR, "flow groups with hash creation failed.");
 		err = ENOMEM;
@@ -2197,11 +2256,11 @@ mlx5_alloc_table_hash_list(struct mlx5_priv *priv __rte_unused)
 	snprintf(s, sizeof(s), "%s_flow_table", priv->sh->ibdev_name);
 	sh->flow_tbls = mlx5_hlist_create(s, MLX5_FLOW_TABLE_HLIST_ARRAY_SIZE,
 					  false, true, sh,
-					  flow_dv_tbl_create_cb,
-					  flow_dv_tbl_match_cb,
-					  flow_dv_tbl_remove_cb,
-					  flow_dv_tbl_clone_cb,
-					  flow_dv_tbl_clone_free_cb);
+					  mlx5_flow_dv_tbl_create_cb,
+					  mlx5_flow_dv_tbl_match_cb,
+					  mlx5_flow_dv_tbl_remove_cb,
+					  mlx5_flow_dv_tbl_clone_cb,
+					  mlx5_flow_dv_tbl_clone_free_cb);
 	if (!sh->flow_tbls) {
 		DRV_LOG(ERR, "flow tables with hash creation failed.");
 		err = ENOMEM;
@@ -2216,11 +2275,11 @@ mlx5_alloc_table_hash_list(struct mlx5_priv *priv __rte_unused)
 	 * because DV expect to see them even if they cannot be created by
 	 * RDMA-CORE.
 	 */
-	if (!flow_dv_tbl_resource_get(dev, 0, 0, 0, 0,
+	if (!mlx5_flow_dv_tbl_resource_get(dev, 0, 0, 0, 0,
 		NULL, 0, 1, 0, &error) ||
-	    !flow_dv_tbl_resource_get(dev, 0, 1, 0, 0,
+	    !mlx5_flow_dv_tbl_resource_get(dev, 0, 1, 0, 0,
 		NULL, 0, 1, 0, &error) ||
-	    !flow_dv_tbl_resource_get(dev, 0, 0, 1, 0,
+	    !mlx5_flow_dv_tbl_resource_get(dev, 0, 0, 1, 0,
 		NULL, 0, 1, 0, &error)) {
 		err = ENOMEM;
 		goto error;
@@ -2336,6 +2395,18 @@ mlx5_proc_priv_uninit(struct rte_eth_dev *dev)
 	dev->process_private = NULL;
 }
 
+static void
+mlx5_flow_pools_destroy(struct mlx5_priv *priv)
+{
+	int i;
+
+	for (i = 0; i < MLX5_FLOW_TYPE_MAXI; i++) {
+		if (!priv->flows[i])
+			continue;
+		mlx5_ipool_destroy(priv->flows[i]);
+	}
+}
+
 /**
  * DPDK callback to close the device.
  *
@@ -2396,13 +2467,18 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 	/* Free the eCPRI flex parser resource. */
 	mlx5_flex_parser_ecpri_release(dev);
 	mlx5_flex_item_port_cleanup(dev);
+	if (priv->representor) {
+		/* Each representor has a dedicated interrupts handler */
+		rte_intr_instance_free(dev->intr_handle);
+		dev->intr_handle = NULL;
+	}
 	mlx5_indirect_list_handles_release(dev);
 #ifdef HAVE_MLX5_HWS_SUPPORT
 	mlx5_nta_sample_context_free(dev);
-	flow_hw_destroy_vport_action(dev);
+	mlx5_flow_hw_destroy_vport_action(dev);
 	/* dr context will be closed after mlx5_os_free_shared_dr. */
-	flow_hw_resource_release(dev);
-	flow_hw_clear_port_info(dev);
+	mlx5_flow_hw_resource_release(dev);
+	mlx5_flow_hw_clear_port_info(dev);
 	if (priv->tlv_options != NULL) {
 		/* Free the GENEVE TLV parser resource. */
 		claim_zero(mlx5_geneve_tlv_options_destroy(priv->tlv_options, sh->phdev));
@@ -2413,7 +2489,6 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 		priv->ptype_rss_groups = NULL;
 	}
 #endif
-	mlx5_q_counters_destroy(dev);
 	if (priv->rxq_privs != NULL) {
 		/* XXX race condition if mlx5_rx_burst() is still running. */
 		rte_delay_us_sleep(1000);
@@ -2434,6 +2509,7 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 	mlx5_proc_priv_uninit(dev);
 	if (priv->drop_queue.hrxq)
 		mlx5_drop_action_destroy(dev);
+	mlx5_q_counters_destroy(dev);
 	mlx5_mprq_free_mp(dev);
 	mlx5_os_free_shared_dr(priv);
 #ifdef HAVE_MLX5_HWS_SUPPORT
@@ -2525,6 +2601,7 @@ mlx5_dev_close(struct rte_eth_dev *dev)
 		if (!c)
 			claim_zero(rte_eth_switch_domain_free(priv->domain_id));
 	}
+	mlx5_flow_pools_destroy(priv);
 	memset(priv, 0, sizeof(*priv));
 	priv->domain_id = RTE_ETH_DEV_SWITCH_DOMAIN_ID_INVALID;
 	/*
@@ -3821,7 +3898,14 @@ static const struct rte_pci_id mlx5_pci_id_map[] = {
 		RTE_PCI_DEVICE(PCI_VENDOR_ID_MELLANOX,
 				PCI_DEVICE_ID_MELLANOX_CONNECTX8)
 	},
-
+	{
+		RTE_PCI_DEVICE(PCI_VENDOR_ID_MELLANOX,
+				PCI_DEVICE_ID_MELLANOX_CONNECTX9)
+	},
+	{
+		RTE_PCI_DEVICE(PCI_VENDOR_ID_MELLANOX,
+				PCI_DEVICE_ID_MELLANOX_BLUEFIELD4)
+	},
 	{
 		.vendor_id = 0
 	}

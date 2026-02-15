@@ -46,8 +46,6 @@
 
 #define ICE_SUPPORT_CHAIN_NUM 5
 
-#define ICE_TD_CMD                      ICE_TX_DESC_CMD_EOP
-
 #define ICE_VPMD_RX_BURST            CI_VPMD_RX_BURST
 #define ICE_VPMD_TX_BURST            32
 #define ICE_VPMD_RXQ_REARM_THRESH    CI_VPMD_RX_REARM_THRESH
@@ -80,6 +78,64 @@
 #define ICE_TX_OFFLOAD_NOTSUP_MASK \
 		(RTE_MBUF_F_TX_OFFLOAD_MASK ^ ICE_TX_OFFLOAD_MASK)
 
+/* basic scalar path */
+#define ICE_RX_SCALAR_OFFLOADS (				\
+			RTE_ETH_RX_OFFLOAD_VLAN_STRIP |		\
+			RTE_ETH_RX_OFFLOAD_KEEP_CRC |		\
+			RTE_ETH_RX_OFFLOAD_SCATTER |		\
+			RTE_ETH_RX_OFFLOAD_VLAN_FILTER |	\
+			RTE_ETH_RX_OFFLOAD_IPV4_CKSUM |		\
+			RTE_ETH_RX_OFFLOAD_UDP_CKSUM |		\
+			RTE_ETH_RX_OFFLOAD_TCP_CKSUM |		\
+			RTE_ETH_RX_OFFLOAD_QINQ_STRIP |		\
+			RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+			RTE_ETH_RX_OFFLOAD_VLAN_EXTEND |	\
+			RTE_ETH_RX_OFFLOAD_RSS_HASH |		\
+			RTE_ETH_RX_OFFLOAD_TIMESTAMP |		\
+			RTE_ETH_RX_OFFLOAD_BUFFER_SPLIT)
+/* basic vector paths */
+#define ICE_RX_VECTOR_OFFLOADS (				\
+			RTE_ETH_RX_OFFLOAD_KEEP_CRC |		\
+			RTE_ETH_RX_OFFLOAD_SCATTER |		\
+			RTE_ETH_RX_OFFLOAD_OUTER_IPV4_CKSUM)
+/* vector offload paths */
+#define ICE_RX_VECTOR_OFFLOAD_OFFLOADS (	\
+		ICE_RX_VECTOR_OFFLOADS |	\
+		RTE_ETH_RX_OFFLOAD_CHECKSUM |	\
+		RTE_ETH_RX_OFFLOAD_VLAN_STRIP |	\
+		RTE_ETH_RX_OFFLOAD_VLAN_FILTER |\
+		RTE_ETH_RX_OFFLOAD_RSS_HASH)
+
+/* basic scalar path */
+#define ICE_TX_SCALAR_OFFLOADS (		\
+	RTE_ETH_TX_OFFLOAD_VLAN_INSERT |	\
+	RTE_ETH_TX_OFFLOAD_TCP_TSO |		\
+	RTE_ETH_TX_OFFLOAD_UDP_TSO |		\
+	RTE_ETH_TX_OFFLOAD_MULTI_SEGS |		\
+	RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE |	\
+	RTE_ETH_TX_OFFLOAD_QINQ_INSERT |	\
+	RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_UDP_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_TCP_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_SCTP_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_OUTER_IPV4_CKSUM |	\
+	RTE_ETH_TX_OFFLOAD_OUTER_UDP_CKSUM |	\
+	RTE_ETH_TX_OFFLOAD_VXLAN_TNL_TSO |	\
+	RTE_ETH_TX_OFFLOAD_GRE_TNL_TSO |	\
+	RTE_ETH_TX_OFFLOAD_IPIP_TNL_TSO |	\
+	RTE_ETH_TX_OFFLOAD_GENEVE_TNL_TSO |	\
+	RTE_ETH_TX_OFFLOAD_SEND_ON_TIMESTAMP)
+/* basic vector path */
+#define ICE_TX_VECTOR_OFFLOADS RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE
+/* vector offload paths */
+#define ICE_TX_VECTOR_OFFLOAD_OFFLOADS (	\
+	ICE_TX_VECTOR_OFFLOADS |		\
+	RTE_ETH_TX_OFFLOAD_VLAN_INSERT |	\
+	RTE_ETH_TX_OFFLOAD_IPV4_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_UDP_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_TCP_CKSUM |		\
+	RTE_ETH_TX_OFFLOAD_SCTP_CKSUM)
+
 /* Max header size can be 2K - 64 bytes */
 #define ICE_RX_HDR_BUF_SIZE    (2048 - 64)
 
@@ -110,19 +166,6 @@ struct ice_txtime {
 	int ts_offset; /* dynamic mbuf Tx timestamp field offset */
 	uint64_t ts_flag; /* dynamic mbuf Tx timestamp flag */
 	const struct rte_memzone *ts_mz;
-};
-
-/* Offload features */
-union ice_tx_offload {
-	uint64_t data;
-	struct {
-		uint64_t l2_len:7; /* L2 (MAC) Header Length. */
-		uint64_t l3_len:9; /* L3 (IP) Header Length. */
-		uint64_t l4_len:8; /* L4 Header Length. */
-		uint64_t tso_segsz:16; /* TCP TSO segment size */
-		uint64_t outer_l2_len:8; /* outer L2 Header Length */
-		uint64_t outer_l3_len:16; /* outer L3 Header Length */
-	};
 };
 
 /* Rx Flex Descriptor for Comms Package Profile
@@ -201,7 +244,7 @@ uint16_t ice_prep_pkts(__rte_unused void *tx_queue, struct rte_mbuf **tx_pkts,
 void ice_set_tx_function_flag(struct rte_eth_dev *dev,
 			      struct ci_tx_queue *txq);
 void ice_set_tx_function(struct rte_eth_dev *dev);
-uint32_t ice_rx_queue_count(void *rx_queue);
+int ice_rx_queue_count(void *rx_queue);
 void ice_rxq_info_get(struct rte_eth_dev *dev, uint16_t queue_id,
 		      struct rte_eth_rxq_info *qinfo);
 void ice_txq_info_get(struct rte_eth_dev *dev, uint16_t queue_id,
@@ -221,13 +264,6 @@ void ice_select_rxd_to_pkt_fields_handler(struct ci_rx_queue *rxq,
 int ice_rx_vec_dev_check(struct rte_eth_dev *dev);
 int ice_tx_vec_dev_check(struct rte_eth_dev *dev);
 int ice_rxq_vec_setup(struct ci_rx_queue *rxq);
-int ice_txq_vec_setup(struct ci_tx_queue *txq);
-uint16_t ice_recv_pkts_vec(void *rx_queue, struct rte_mbuf **rx_pkts,
-			   uint16_t nb_pkts);
-uint16_t ice_recv_scattered_pkts_vec(void *rx_queue, struct rte_mbuf **rx_pkts,
-				     uint16_t nb_pkts);
-uint16_t ice_xmit_pkts_vec(void *tx_queue, struct rte_mbuf **tx_pkts,
-			   uint16_t nb_pkts);
 uint16_t ice_recv_pkts_vec_avx2(void *rx_queue, struct rte_mbuf **rx_pkts,
 				uint16_t nb_pkts);
 uint16_t ice_recv_pkts_vec_avx2_offload(void *rx_queue, struct rte_mbuf **rx_pkts,
@@ -261,6 +297,7 @@ uint16_t ice_xmit_pkts_vec_avx512_offload(void *tx_queue,
 int ice_fdir_programming(struct ice_pf *pf, struct ice_fltr_desc *fdir_desc);
 int ice_tx_done_cleanup(void *txq, uint32_t free_cnt);
 int ice_get_monitor_addr(void *rx_queue, struct rte_power_monitor_cond *pmc);
+enum rte_vect_max_simd ice_get_max_simd_bitwidth(void);
 
 #define FDIR_PARSING_ENABLE_PER_QUEUE(ad, on) do { \
 	int i; \

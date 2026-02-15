@@ -36,7 +36,7 @@ RTE_EVENT_DMA_ADAPTER_OP_NEW mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the ``RTE_EVENT_DMA_ADAPTER_OP_NEW`` mode,
-application submits DMA operations directly to an DMA device.
+application submits DMA operations directly to a DMA device.
 The adapter then dequeues DMA completions from the DMA device
 and enqueues them as events to the event device.
 This mode does not ensure ingress ordering
@@ -144,7 +144,7 @@ on which it enqueues events towards the DMA adapter using ``rte_event_enqueue_bu
    uint32_t cap;
    int ret;
 
-   /* Fill in event info and update event_ptr with rte_event_dma_adapter_op */
+   /* Fill in event info and update event_ptr with rte_dma_op */
    memset(&ev, 0, sizeof(ev));
    .
    .
@@ -230,7 +230,7 @@ Configuring service function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If the adapter uses a service function, the application is required
-to assign a service core to the service function as show below.
+to assign a service core to the service function as shown below.
 
 .. code-block:: c
 
@@ -244,11 +244,11 @@ Set event response information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the ``RTE_EVENT_DMA_ADAPTER_OP_FORWARD`` / ``RTE_EVENT_DMA_ADAPTER_OP_NEW`` mode,
-the application specifies the dmadev ID and vchan ID in ``struct rte_event_dma_adapter_op``
+the application specifies the dmadev ID and vchan ID in ``struct rte_dma_op``
 and the event information (response information)
 needed to enqueue an event after the DMA operation has completed.
 The response information is specified in ``struct rte_event``
-and appended to the ``struct rte_event_dma_adapter_op``.
+and appended to the ``struct rte_dma_op``.
 
 
 Start the adapter instance
