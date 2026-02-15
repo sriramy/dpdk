@@ -15,11 +15,10 @@
  *
  * Supports multiple sessions with independent sampling intervals and durations.
  *
- * Implementation Limits:
- * - Maximum sessions: 32
- * - Maximum sources per session: 64
- * - Maximum sinks per session: 16
- * - Maximum xstats per source: 256
+ * Implementation:
+ * - Uses dynamic memory allocation for sessions, sources, sinks, and xstats
+ * - Memory is allocated at initialization time, not during sampling
+ * - Arrays automatically grow as needed when adding sessions, sources, or sinks
  */
 
 #include <stdint.h>
@@ -86,6 +85,78 @@ struct rte_sampler_sample {
 };
 
 /**
+ * Callback function type for source xstats_names_get
+ *
+ * Get the list of available xstats from the source.
+ *
+ * @param source_id
+ *   Source-specific identifier (e.g., device id)
+ * @param xstats_names
+ *   Array to be filled with xstats names (can be NULL to query count)
+ * @param ids
+ *   Array to be filled with xstats IDs
+ * @param size
+ *   Size of the arrays
+ * @param user_data
+ *   User-provided data passed during source registration
+ * @return
+ *   Number of xstats available or negative on error
+ */
+typedef int (*rte_sampler_source_xstats_names_get_t)(
+	uint16_t source_id,
+	struct rte_sampler_xstats_name *xstats_names,
+	uint64_t *ids,
+	unsigned int size,
+	void *user_data);
+
+/**
+ * Callback function type for source xstats_get
+ *
+ * Get xstats values from the source.
+ *
+ * @param source_id
+ *   Source-specific identifier (e.g., device id)
+ * @param ids
+ *   Array of xstats IDs to retrieve
+ * @param values
+ *   Array to be filled with xstats values
+ * @param n
+ *   Number of xstats to retrieve
+ * @param user_data
+ *   User-provided data passed during source registration
+ * @return
+ *   Number of xstats retrieved or negative on error
+ */
+typedef int (*rte_sampler_source_xstats_get_t)(
+	uint16_t source_id,
+	const uint64_t *ids,
+	uint64_t *values,
+	unsigned int n,
+	void *user_data);
+
+/**
+ * Callback function type for source xstats_reset
+ *
+ * Reset xstats in the source (optional).
+ *
+ * @param source_id
+ *   Source-specific identifier (e.g., device id)
+ * @param ids
+ *   Array of xstats IDs to reset (NULL means all)
+ * @param n
+ *   Number of xstats to reset
+ * @param user_data
+ *   User-provided data passed during source registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_source_xstats_reset_t)(
+	uint16_t source_id,
+	const uint64_t *ids,
+	unsigned int n,
+	void *user_data);
+
+/**
  * Callback function type for source start
  *
  * Called when sampling session starts. Source should initialize.
@@ -143,10 +214,44 @@ void *user_data);
  * Sampler source operations structure
  */
 struct rte_sampler_source_ops {
-	rte_sampler_source_start_t start;      /**< Start callback */
-	rte_sampler_source_collect_t collect;  /**< Collect callback */
-	rte_sampler_source_stop_t stop;        /**< Stop callback */
+	rte_sampler_source_xstats_names_get_t xstats_names_get;  /**< Get xstats names */
+	rte_sampler_source_xstats_get_t xstats_get;              /**< Get xstats values */
+	rte_sampler_source_xstats_reset_t xstats_reset;          /**< Reset xstats (optional) */
+	rte_sampler_source_start_t start;                        /**< Start callback (optional) */
+	rte_sampler_source_collect_t collect;                    /**< Collect callback (optional) */
+	rte_sampler_source_stop_t stop;                          /**< Stop callback (optional) */
 };
+
+/**
+ * Callback function type for sink output
+ *
+ * Called to output sampled xstats to the sink.
+ *
+ * @param source_name
+ *   Name of the source
+ * @param source_id
+ *   Source identifier
+ * @param xstats_names
+ *   Array of xstats names (can be NULL if sink doesn't need names)
+ * @param ids
+ *   Array of xstats IDs
+ * @param values
+ *   Array of xstats values
+ * @param n
+ *   Number of xstats
+ * @param user_data
+ *   User-provided data passed during sink registration
+ * @return
+ *   Zero on success or negative on error
+ */
+typedef int (*rte_sampler_sink_output_t)(
+	const char *source_name,
+	uint16_t source_id,
+	const struct rte_sampler_xstats_name *xstats_names,
+	const uint64_t *ids,
+	const uint64_t *values,
+	unsigned int n,
+	void *user_data);
 
 /**
  * Callback function type for sink start
@@ -226,11 +331,12 @@ typedef int (*rte_sampler_sink_stop_t)(void *user_data);
  * Sampler sink operations structure
  */
 struct rte_sampler_sink_ops {
-	rte_sampler_sink_start_t start;                 /**< Start callback */
-	rte_sampler_sink_report_begin_t begin;          /**< Report begin callback */
-	rte_sampler_sink_report_append_t append;        /**< Append sample callback */
-	rte_sampler_sink_report_end_t end;              /**< Report end callback */
-	rte_sampler_sink_stop_t stop;                   /**< Stop callback */
+	rte_sampler_sink_output_t output;               /**< Output callback */
+	rte_sampler_sink_start_t start;                 /**< Start callback (optional) */
+	rte_sampler_sink_report_begin_t begin;          /**< Report begin callback (optional) */
+	rte_sampler_sink_report_append_t append;        /**< Append sample callback (optional) */
+	rte_sampler_sink_report_end_t end;              /**< Report end callback (optional) */
+	rte_sampler_sink_stop_t stop;                   /**< Stop callback (optional) */
 	uint32_t flags;                                 /**< Sink flags (RTE_SAMPLER_SINK_F_*) */
 };
 
