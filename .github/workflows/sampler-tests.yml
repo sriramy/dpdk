@@ -1,0 +1,74 @@
+name: Sampler Library Tests
+
+on:
+  push:
+    paths:
+      - 'lib/sampler/**'
+      - 'app/test/test_sampler.c'
+      - '.github/workflows/sampler-tests.yml'
+  pull_request:
+    paths:
+      - 'lib/sampler/**'
+      - 'app/test/test_sampler.c'
+      - '.github/workflows/sampler-tests.yml'
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -exo pipefail {0}
+
+jobs:
+  sampler-library-tests:
+    name: Build and Test Sampler Library
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout sources
+      uses: actions/checkout@v4
+
+    - name: Update APT cache
+      run: sudo apt update || true
+
+    - name: Install build dependencies
+      run: |
+        sudo apt install -y \
+          build-essential \
+          ccache \
+          libnuma-dev \
+          meson \
+          ninja-build \
+          pkg-config \
+          python3-pip \
+          python3-pyelftools
+
+    - name: Configure build
+      run: |
+        meson setup build \
+          -Denable_kmods=false \
+          -Dexamples= \
+          -Dmax_numa_nodes=1 \
+          -Dtests=true \
+          -Dwerror=true
+
+    - name: Build DPDK
+      run: ninja -C build
+
+    - name: Build sampler library
+      run: ninja -C build lib/librte_sampler.a
+
+    - name: Build test suite
+      run: ninja -C build app/dpdk-test
+
+    - name: Run sampler tests
+      run: |
+        cd build
+        sudo ./app/dpdk-test --no-huge -m 512 --log-level=8 -- sampler_autotest
+
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: sampler-test-logs
+        path: |
+          build/.ninja_log
+          build/meson-logs/meson-log.txt
+          build/meson-logs/testlog.txt
