@@ -1035,6 +1035,6 @@ int
 	/* If filter is active, return filtered count, otherwise return total count */
 	if (source->filter_active)
 		return source->filtered_count;
-	else
-		return source->xstats_count;
+
+	return source->xstats_count;
 }
