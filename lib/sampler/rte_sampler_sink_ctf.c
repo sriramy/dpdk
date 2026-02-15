@@ -12,6 +12,7 @@
 #include <rte_common.h>
 #include <rte_malloc.h>
 #include <rte_cycles.h>
+#include <rte_string_fns.h>
 #include <rte_sampler.h>
 #include "rte_sampler_sink_ctf.h"
 
