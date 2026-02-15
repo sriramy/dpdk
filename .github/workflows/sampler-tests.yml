@@ -58,7 +58,6 @@ jobs:
     - name: Configure build
       run: |
         meson setup build \
-          -Denable_kmods=false \
           -Dexamples= \
           -Dmax_numa_nodes=1 \
           -Dtests=true \
