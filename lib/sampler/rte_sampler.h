@@ -633,6 +633,20 @@ int rte_sampler_source_get_filter(struct rte_sampler_source *source,
 				   char **patterns,
 				   unsigned int max_patterns);
 
+/**
+ * Get xstats count for a source
+ *
+ * Returns the number of xstats available from the source. If a filter
+ * is active, returns the number of xstats that match the filter.
+ * This is useful for determining buffer sizes needed for sampling.
+ *
+ * @param source
+ *   Pointer to source structure
+ * @return
+ *   Number of xstats available (after filter if active), or negative on error
+ */
+int rte_sampler_source_get_xstats_count(struct rte_sampler_source *source);
+
 #ifdef __cplusplus
 }
 #endif

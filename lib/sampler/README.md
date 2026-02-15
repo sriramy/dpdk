@@ -127,6 +127,25 @@ int count = rte_sampler_xstats_get(session, source, ids, values, n);
 rte_sampler_xstats_reset(session, source, ids, n);
 ```
 
+### Filtering and Capacity Management
+
+```c
+/* Set filter to sample only specific statistics */
+const char *patterns[] = { "rx_pkts*", "tx_pkts*" };
+rte_sampler_source_set_filter(source, patterns, 2);
+
+/* Get the number of xstats after filter is applied */
+int count = rte_sampler_source_get_xstats_count(source);
+/* Use this count to allocate appropriately sized buffers */
+
+/* Clear filter to sample all statistics */
+rte_sampler_source_clear_filter(source);
+
+/* Get filter patterns */
+char *filter_patterns[10];
+int num_patterns = rte_sampler_source_get_filter(source, filter_patterns, 10);
+```
+
 ## Usage Examples
 
 ### Example 1: Single Session with Manual Sampling
