@@ -11,11 +11,10 @@
 #include <rte_cycles.h>
 #include <rte_sampler.h>
 
-#define MAX_SESSIONS 32
-#define MAX_SOURCES_PER_SESSION 64
-#define MAX_SINKS_PER_SESSION 16
-#define MAX_XSTATS_PER_SOURCE 256
-#define MAX_FILTER_PATTERNS 32
+/* Initial capacities for dynamic arrays */
+#define INITIAL_SESSIONS_CAPACITY 32
+#define INITIAL_SOURCES_PER_SESSION 8
+#define INITIAL_SINKS_PER_SESSION 4
 
 /**
  * Sampler source structure
@@ -26,14 +25,16 @@ struct rte_sampler_source {
 	uint16_t source_id;
 	struct rte_sampler_source_ops ops;
 	void *user_data;
-	struct rte_sampler_xstats_name xstats_names[MAX_XSTATS_PER_SOURCE];
-	uint64_t ids[MAX_XSTATS_PER_SOURCE];
-	uint64_t values[MAX_XSTATS_PER_SOURCE];
+	struct rte_sampler_xstats_name *xstats_names;  /**< Dynamically allocated */
+	uint64_t *ids;                                  /**< Dynamically allocated */
+	uint64_t *values;                               /**< Dynamically allocated */
 	unsigned int xstats_count;
+	unsigned int xstats_capacity;                   /**< Allocated capacity */
 /* Filter support */
-	char *filter_patterns[MAX_FILTER_PATTERNS];
+	char **filter_patterns;                         /**< Dynamically allocated array */
 	unsigned int num_filter_patterns;
-	uint64_t filtered_ids[MAX_XSTATS_PER_SOURCE];
+	unsigned int filter_patterns_capacity;          /**< Allocated capacity */
+	uint64_t *filtered_ids;                         /**< Dynamically allocated */
 	unsigned int filtered_count;
 	uint8_t filter_active;
 	uint8_t valid;
@@ -61,91 +62,188 @@ struct rte_sampler_session {
 	uint64_t last_sample_time;
 	uint8_t active;
 	uint8_t valid;
-	struct rte_sampler_source sources[MAX_SOURCES_PER_SESSION];
-	struct rte_sampler_sink sinks[MAX_SINKS_PER_SESSION];
+	struct rte_sampler_source *sources;   /**< Dynamically allocated array */
+	struct rte_sampler_sink *sinks;       /**< Dynamically allocated array */
 	unsigned int num_sources;
 	unsigned int num_sinks;
+	unsigned int sources_capacity;        /**< Allocated capacity */
+	unsigned int sinks_capacity;          /**< Allocated capacity */
 };
 
 /**
  * Global session registry
  */
 static struct {
-struct rte_sampler_session *sessions[MAX_SESSIONS];
-unsigned int num_sessions;
-} sampler_global;
+	struct rte_sampler_session **sessions;  /**< Dynamically allocated array */
+	unsigned int num_sessions;
+	unsigned int capacity;                  /**< Allocated capacity */
+} sampler_global = {
+	.sessions = NULL,
+	.num_sessions = 0,
+	.capacity = 0
+};
+
+/* Forward declarations */
+static void apply_filter(struct rte_sampler_source *source);
+static int matches_filter(struct rte_sampler_source *source, const char *name);
+static int match_pattern(const char *pattern, const char *str);
+
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_create)
 struct rte_sampler_session *
 		rte_sampler_session_create(const struct rte_sampler_session_conf *conf)
 {
-struct rte_sampler_session *session;
-unsigned int i;
+	struct rte_sampler_session *session;
+	unsigned int i;
 
-		session = rte_zmalloc(NULL, sizeof(struct rte_sampler_session),
-      RTE_CACHE_LINE_SIZE);
-if (session == NULL)
-return NULL;
+	session = rte_zmalloc(NULL, sizeof(struct rte_sampler_session),
+		RTE_CACHE_LINE_SIZE);
+	if (session == NULL)
+		return NULL;
 
-/* Set configuration */
-if (conf != NULL) {
-session->sample_interval_ms = conf->sample_interval_ms;
-session->duration_ms = conf->duration_ms;
-if (conf->name != NULL)
-rte_strscpy(session->name, conf->name, sizeof(session->name));
-else
-snprintf(session->name, sizeof(session->name), "session_%p", session);
-} else {
-/* Default configuration: manual sampling, infinite duration */
-session->sample_interval_ms = 0;
-session->duration_ms = 0;
-snprintf(session->name, sizeof(session->name), "session_%p", session);
-}
+	/* Allocate initial capacity for sources and sinks */
+	session->sources = rte_zmalloc(NULL,
+		INITIAL_SOURCES_PER_SESSION * sizeof(struct rte_sampler_source),
+		RTE_CACHE_LINE_SIZE);
+	if (session->sources == NULL) {
+		rte_free(session);
+		return NULL;
+	}
+	session->sources_capacity = INITIAL_SOURCES_PER_SESSION;
 
-session->valid = 1;
+	session->sinks = rte_zmalloc(NULL,
+		INITIAL_SINKS_PER_SESSION * sizeof(struct rte_sampler_sink),
+		RTE_CACHE_LINE_SIZE);
+	if (session->sinks == NULL) {
+		rte_free(session->sources);
+		rte_free(session);
+		return NULL;
+	}
+	session->sinks_capacity = INITIAL_SINKS_PER_SESSION;
 
-/* Register session globally */
-for (i = 0; i < MAX_SESSIONS; i++) {
-if (sampler_global.sessions[i] == NULL) {
-sampler_global.sessions[i] = session;
-if (i >= sampler_global.num_sessions)
-sampler_global.num_sessions = i + 1;
-break;
-}
-}
+	/* Set configuration */
+	if (conf != NULL) {
+		session->sample_interval_ms = conf->sample_interval_ms;
+		session->duration_ms = conf->duration_ms;
+		if (conf->name != NULL)
+			rte_strscpy(session->name, conf->name, sizeof(session->name));
+		else
+			snprintf(session->name, sizeof(session->name), "session_%p", session);
+	} else {
+		/* Default configuration: manual sampling, infinite duration */
+		session->sample_interval_ms = 0;
+		session->duration_ms = 0;
+		snprintf(session->name, sizeof(session->name), "session_%p", session);
+	}
 
-if (i >= MAX_SESSIONS) {
-RTE_LOG(WARNING, USER1,
-"Maximum sessions (%d) reached, session will not be polled automatically\n",
-MAX_SESSIONS);
-}
+	session->valid = 1;
 
-return session;
+	/* Register session globally - grow array if needed */
+	if (sampler_global.sessions == NULL) {
+		/* First time initialization */
+		sampler_global.sessions = rte_zmalloc(NULL,
+			INITIAL_SESSIONS_CAPACITY * sizeof(struct rte_sampler_session *),
+			RTE_CACHE_LINE_SIZE);
+		if (sampler_global.sessions == NULL) {
+			rte_free(session->sinks);
+			rte_free(session->sources);
+			rte_free(session);
+			return NULL;
+		}
+		sampler_global.capacity = INITIAL_SESSIONS_CAPACITY;
+	}
+
+	/* Find free slot or grow array */
+	for (i = 0; i < sampler_global.capacity; i++) {
+		if (sampler_global.sessions[i] == NULL) {
+			sampler_global.sessions[i] = session;
+			if (i >= sampler_global.num_sessions)
+				sampler_global.num_sessions = i + 1;
+			break;
+		}
+	}
+
+	if (i >= sampler_global.capacity) {
+		/* Need to grow the array */
+		struct rte_sampler_session **new_sessions;
+		unsigned int new_capacity = sampler_global.capacity * 2;
+
+		new_sessions = rte_zmalloc(NULL,
+			new_capacity * sizeof(struct rte_sampler_session *),
+			RTE_CACHE_LINE_SIZE);
+		if (new_sessions == NULL) {
+			RTE_LOG(WARNING, USER1,
+				"Failed to grow session registry, session will not be polled automatically\n");
+			/* Session still created, just not registered for polling */
+			return session;
+		}
+
+		/* Copy old sessions */
+		for (i = 0; i < sampler_global.capacity; i++)
+			new_sessions[i] = sampler_global.sessions[i];
+
+		/* Free old array and use new one */
+		rte_free(sampler_global.sessions);
+		sampler_global.sessions = new_sessions;
+
+		/* Add new session */
+		sampler_global.sessions[sampler_global.capacity] = session;
+		sampler_global.num_sessions = sampler_global.capacity + 1;
+		sampler_global.capacity = new_capacity;
+	}
+
+	return session;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_free)
 void
 		rte_sampler_session_free(struct rte_sampler_session *session)
 {
-unsigned int i;
+	unsigned int i;
 
-if (session == NULL)
-return;
+	if (session == NULL)
+		return;
 
-/* Stop session if active */
-if (session->active)
-rte_sampler_session_stop(session);
+	/* Stop session if active */
+	if (session->active)
+		rte_sampler_session_stop(session);
 
-/* Unregister from global registry */
-for (i = 0; i < sampler_global.num_sessions; i++) {
-if (sampler_global.sessions[i] == session) {
-sampler_global.sessions[i] = NULL;
-break;
-}
-}
+	/* Free all sources */
+	if (session->sources != NULL) {
+		for (i = 0; i < session->num_sources; i++) {
+			struct rte_sampler_source *source = &session->sources[i];
+			if (source->valid) {
+				/* Free dynamic arrays in source */
+				rte_free(source->xstats_names);
+				rte_free(source->ids);
+				rte_free(source->values);
+				rte_free(source->filtered_ids);
+				/* Free filter patterns */
+				if (source->filter_patterns != NULL) {
+					unsigned int j;
+					for (j = 0; j < source->num_filter_patterns; j++)
+						rte_free(source->filter_patterns[j]);
+					rte_free(source->filter_patterns);
+				}
+			}
+		}
+		rte_free(session->sources);
+	}
 
-session->valid = 0;
-rte_free(session);
+	/* Free all sinks */
+	rte_free(session->sinks);
+
+	/* Unregister from global registry */
+	for (i = 0; i < sampler_global.num_sessions; i++) {
+		if (sampler_global.sessions != NULL &&
+		    sampler_global.sessions[i] == session) {
+			sampler_global.sessions[i] = NULL;
+			break;
+		}
+	}
+
+	session->valid = 0;
+	rte_free(session);
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_start)
@@ -219,39 +317,57 @@ struct rte_sampler_source *
 		const struct rte_sampler_source_ops *ops,
 		void *user_data)
 {
-struct rte_sampler_source *source;
-unsigned int i;
+	struct rte_sampler_source *source;
+	unsigned int i;
 
-if (session == NULL || !session->valid ||
-    source_name == NULL || ops == NULL)
-return NULL;
+	if (session == NULL || !session->valid ||
+	    source_name == NULL || ops == NULL)
+		return NULL;
 
-if (ops->xstats_names_get == NULL || ops->xstats_get == NULL)
-return NULL;
+	if (ops->xstats_names_get == NULL || ops->xstats_get == NULL)
+		return NULL;
 
-/* Find free slot */
-for (i = 0; i < MAX_SOURCES_PER_SESSION; i++) {
-if (!session->sources[i].valid)
-break;
-}
+	/* Find free slot or grow array */
+	for (i = 0; i < session->sources_capacity; i++) {
+		if (!session->sources[i].valid)
+			break;
+	}
 
-if (i >= MAX_SOURCES_PER_SESSION)
-return NULL;
+	if (i >= session->sources_capacity) {
+		/* Need to grow the array */
+		struct rte_sampler_source *new_sources;
+		unsigned int new_capacity = session->sources_capacity * 2;
 
-source = &session->sources[i];
-memset(source, 0, sizeof(*source));
+		new_sources = rte_zmalloc(NULL,
+			new_capacity * sizeof(struct rte_sampler_source),
+			RTE_CACHE_LINE_SIZE);
+		if (new_sources == NULL)
+			return NULL;
 
-source->session = session;
-rte_strscpy(source->name, source_name, sizeof(source->name));
-source->source_id = source_id;
-source->ops = *ops;
-source->user_data = user_data;
-source->valid = 1;
+		/* Copy old sources */
+		memcpy(new_sources, session->sources,
+			session->sources_capacity * sizeof(struct rte_sampler_source));
 
-if (i >= session->num_sources)
-session->num_sources = i + 1;
+		/* Free old array and use new one */
+		rte_free(session->sources);
+		session->sources = new_sources;
+		session->sources_capacity = new_capacity;
+	}
 
-return source;
+	source = &session->sources[i];
+	memset(source, 0, sizeof(*source));
+
+	source->session = session;
+	rte_strscpy(source->name, source_name, sizeof(source->name));
+	source->source_id = source_id;
+	source->ops = *ops;
+	source->user_data = user_data;
+	source->valid = 1;
+
+	if (i >= session->num_sources)
+		session->num_sources = i + 1;
+
+	return source;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_unregister)
@@ -284,38 +400,56 @@ struct rte_sampler_sink *
 		const struct rte_sampler_sink_ops *ops,
 		void *user_data)
 {
-struct rte_sampler_sink *sink;
-unsigned int i;
+	struct rte_sampler_sink *sink;
+	unsigned int i;
 
-if (session == NULL || !session->valid ||
-    sink_name == NULL || ops == NULL)
-return NULL;
+	if (session == NULL || !session->valid ||
+	    sink_name == NULL || ops == NULL)
+		return NULL;
 
-if (ops->output == NULL)
-return NULL;
+	if (ops->output == NULL)
+		return NULL;
 
-/* Find free slot */
-for (i = 0; i < MAX_SINKS_PER_SESSION; i++) {
-if (!session->sinks[i].valid)
-break;
-}
+	/* Find free slot or grow array */
+	for (i = 0; i < session->sinks_capacity; i++) {
+		if (!session->sinks[i].valid)
+			break;
+	}
 
-if (i >= MAX_SINKS_PER_SESSION)
-return NULL;
+	if (i >= session->sinks_capacity) {
+		/* Need to grow the array */
+		struct rte_sampler_sink *new_sinks;
+		unsigned int new_capacity = session->sinks_capacity * 2;
 
-sink = &session->sinks[i];
-memset(sink, 0, sizeof(*sink));
+		new_sinks = rte_zmalloc(NULL,
+			new_capacity * sizeof(struct rte_sampler_sink),
+			RTE_CACHE_LINE_SIZE);
+		if (new_sinks == NULL)
+			return NULL;
 
-sink->session = session;
-rte_strscpy(sink->name, sink_name, sizeof(sink->name));
-sink->ops = *ops;
-sink->user_data = user_data;
-sink->valid = 1;
+		/* Copy old sinks */
+		memcpy(new_sinks, session->sinks,
+			session->sinks_capacity * sizeof(struct rte_sampler_sink));
 
-if (i >= session->num_sinks)
-session->num_sinks = i + 1;
+		/* Free old array and use new one */
+		rte_free(session->sinks);
+		session->sinks = new_sinks;
+		session->sinks_capacity = new_capacity;
+	}
 
-return sink;
+	sink = &session->sinks[i];
+	memset(sink, 0, sizeof(*sink));
+
+	sink->session = session;
+	rte_strscpy(sink->name, sink_name, sizeof(sink->name));
+	sink->ops = *ops;
+	sink->user_data = user_data;
+	sink->valid = 1;
+
+	if (i >= session->num_sinks)
+		session->num_sinks = i + 1;
+
+	return sink;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_sink_unregister)
@@ -334,61 +468,117 @@ RTE_EXPORT_SYMBOL(rte_sampler_sample)
 int
 		rte_sampler_sample(struct rte_sampler_session *session)
 {
-unsigned int i, j;
-int ret;
+	unsigned int i, j;
+	int ret;
 
-if (session == NULL || !session->valid)
-return -EINVAL;
+	if (session == NULL || !session->valid)
+		return -EINVAL;
 
-/* Sample from all sources */
-for (i = 0; i < session->num_sources; i++) {
-struct rte_sampler_source *source = &session->sources[i];
+	/* Sample from all sources */
+	for (i = 0; i < session->num_sources; i++) {
+		struct rte_sampler_source *source = &session->sources[i];
 
-if (!source->valid)
-continue;
+		if (!source->valid)
+			continue;
 
-/* Get xstats names if not already cached */
-if (source->xstats_count == 0) {
-ret = source->ops.xstats_names_get(
-source->source_id,
-source->xstats_names,
-source->ids,
-MAX_XSTATS_PER_SOURCE,
-source->user_data);
-if (ret < 0)
-continue;
+		/* Get xstats names if not already cached */
+		if (source->xstats_count == 0) {
+			/* First, query the size */
+			ret = source->ops.xstats_names_get(
+				source->source_id,
+				NULL,
+				NULL,
+				0,
+				source->user_data);
+			if (ret < 0)
+				continue;
 
-if (ret > MAX_XSTATS_PER_SOURCE) {
-RTE_LOG(WARNING, USER1,
-"Source %s (id=%u) has %d xstats, "
-"but only %d can be sampled (truncated)\n",
-source->name, source->source_id,
-ret, MAX_XSTATS_PER_SOURCE);
-}
+			if (ret == 0)
+				continue;
 
-source->xstats_count = ret < MAX_XSTATS_PER_SOURCE ? 
-       ret : MAX_XSTATS_PER_SOURCE;
+			/* Allocate arrays based on actual size needed */
+			source->xstats_capacity = ret;
+			source->xstats_names = rte_zmalloc(NULL,
+				ret * sizeof(struct rte_sampler_xstats_name),
+				RTE_CACHE_LINE_SIZE);
+			if (source->xstats_names == NULL)
+				continue;
 
-/* Apply filter to determine which stats to sample */
-apply_filter(source);
-}
+			source->ids = rte_zmalloc(NULL,
+				ret * sizeof(uint64_t),
+				RTE_CACHE_LINE_SIZE);
+			if (source->ids == NULL) {
+				rte_free(source->xstats_names);
+				source->xstats_names = NULL;
+				continue;
+			}
 
-/* Get xstats values (using filtered IDs if filter is active) */
-if (source->filtered_count > 0) {
-ret = source->ops.xstats_get(
-source->source_id,
-source->filtered_ids,
-source->values,
-source->filtered_count,
-source->user_data);
-if (ret < 0)
-continue;
-}
+			source->values = rte_zmalloc(NULL,
+				ret * sizeof(uint64_t),
+				RTE_CACHE_LINE_SIZE);
+			if (source->values == NULL) {
+				rte_free(source->xstats_names);
+				rte_free(source->ids);
+				source->xstats_names = NULL;
+				source->ids = NULL;
+				continue;
+			}
 
-/* Send to all sinks */
-for (j = 0; j < session->num_sinks; j++) {
-struct rte_sampler_sink *sink = &session->sinks[j];
-const struct rte_sampler_xstats_name *names_to_pass;
+			source->filtered_ids = rte_zmalloc(NULL,
+				ret * sizeof(uint64_t),
+				RTE_CACHE_LINE_SIZE);
+			if (source->filtered_ids == NULL) {
+				rte_free(source->xstats_names);
+				rte_free(source->ids);
+				rte_free(source->values);
+				source->xstats_names = NULL;
+				source->ids = NULL;
+				source->values = NULL;
+				continue;
+			}
+
+			/* Now get the actual names and IDs */
+			ret = source->ops.xstats_names_get(
+				source->source_id,
+				source->xstats_names,
+				source->ids,
+				source->xstats_capacity,
+				source->user_data);
+			if (ret < 0) {
+				rte_free(source->xstats_names);
+				rte_free(source->ids);
+				rte_free(source->values);
+				rte_free(source->filtered_ids);
+				source->xstats_names = NULL;
+				source->ids = NULL;
+				source->values = NULL;
+				source->filtered_ids = NULL;
+				source->xstats_capacity = 0;
+				continue;
+			}
+
+			source->xstats_count = ret;
+
+			/* Apply filter to determine which stats to sample */
+			apply_filter(source);
+		}
+
+		/* Get xstats values (using filtered IDs if filter is active) */
+		if (source->filtered_count > 0) {
+			ret = source->ops.xstats_get(
+				source->source_id,
+				source->filtered_ids,
+				source->values,
+				source->filtered_count,
+				source->user_data);
+			if (ret < 0)
+				continue;
+		}
+
+		/* Send to all sinks */
+		for (j = 0; j < session->num_sinks; j++) {
+			struct rte_sampler_sink *sink = &session->sinks[j];
+			const struct rte_sampler_xstats_name *names_to_pass;
 
 if (!sink->valid)
 continue;
@@ -590,7 +780,8 @@ return ret;
 }
 
 /* Clear cached values */
-memset(source->values, 0, sizeof(source->values));
+if (source->values != NULL && source->xstats_capacity > 0)
+	memset(source->values, 0, source->xstats_capacity * sizeof(uint64_t));
 
 return 0;
 }
@@ -612,7 +803,8 @@ src->user_data);
 }
 
 /* Clear cached values */
-memset(src->values, 0, sizeof(src->values));
+if (src->values != NULL && src->xstats_capacity > 0)
+	memset(src->values, 0, src->xstats_capacity * sizeof(uint64_t));
 }
 
 return 0;
@@ -728,42 +920,55 @@ int
 		const char **patterns,
 		unsigned int num_patterns)
 {
-unsigned int i;
+	unsigned int i;
 
-if (source == NULL || !source->valid)
-return -EINVAL;
+	if (source == NULL || !source->valid)
+		return -EINVAL;
 
-if (patterns == NULL || num_patterns == 0)
-return -EINVAL;
+	if (patterns == NULL || num_patterns == 0)
+		return -EINVAL;
 
-if (num_patterns > MAX_FILTER_PATTERNS)
-return -E2BIG;
+	/* Clear old patterns */
+	for (i = 0; i < source->num_filter_patterns; i++) {
+		rte_free(source->filter_patterns[i]);
+		source->filter_patterns[i] = NULL;
+	}
 
-/* Clear old patterns */
-for (i = 0; i < source->num_filter_patterns; i++) {
-rte_free(source->filter_patterns[i]);
-source->filter_patterns[i] = NULL;
-}
+	/* Grow filter_patterns array if needed */
+	if (num_patterns > source->filter_patterns_capacity) {
+		char **new_patterns = rte_zmalloc(NULL,
+			num_patterns * sizeof(char *),
+			RTE_CACHE_LINE_SIZE);
+		if (new_patterns == NULL)
+			return -ENOMEM;
 
-/* Copy new patterns */
-source->num_filter_patterns = 0;
-for (i = 0; i < num_patterns; i++) {
-source->filter_patterns[i] = rte_strdup(patterns[i]);
-if (source->filter_patterns[i] == NULL) {
-/* Cleanup on failure */
-rte_sampler_source_clear_filter(source);
-return -ENOMEM;
-}
-source->num_filter_patterns++;
-}
+		/* Copy old array pointers if any */
+		if (source->filter_patterns != NULL) {
+			rte_free(source->filter_patterns);
+		}
+		source->filter_patterns = new_patterns;
+		source->filter_patterns_capacity = num_patterns;
+	}
 
-source->filter_active = 1;
+	/* Copy new patterns */
+	source->num_filter_patterns = 0;
+	for (i = 0; i < num_patterns; i++) {
+		source->filter_patterns[i] = rte_strdup(patterns[i]);
+		if (source->filter_patterns[i] == NULL) {
+			/* Cleanup on failure */
+			rte_sampler_source_clear_filter(source);
+			return -ENOMEM;
+		}
+		source->num_filter_patterns++;
+	}
 
-/* Apply filter to existing stats */
-if (source->xstats_count > 0)
-apply_filter(source);
+	source->filter_active = 1;
 
-return 0;
+	/* Apply filter to existing stats */
+	if (source->xstats_count > 0)
+		apply_filter(source);
+
+	return 0;
 }
 
 RTE_EXPORT_SYMBOL(rte_sampler_source_clear_filter)
