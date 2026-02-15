@@ -953,12 +953,14 @@ int
 	/* Copy new patterns */
 	source->num_filter_patterns = 0;
 	for (i = 0; i < num_patterns; i++) {
-		source->filter_patterns[i] = rte_strdup(patterns[i]);
+		size_t len = strlen(patterns[i]) + 1;
+		source->filter_patterns[i] = rte_malloc(NULL, len, 0);
 		if (source->filter_patterns[i] == NULL) {
 			/* Cleanup on failure */
 			rte_sampler_source_clear_filter(source);
 			return -ENOMEM;
 		}
+		rte_strscpy(source->filter_patterns[i], patterns[i], len);
 		source->num_filter_patterns++;
 	}
 
