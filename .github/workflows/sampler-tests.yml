@@ -20,10 +20,25 @@ jobs:
   sampler-library-tests:
     name: Build and Test Sampler Library
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: $HOME/.ccache
 
     steps:
     - name: Checkout sources
       uses: actions/checkout@v4
+
+    - name: Generate cache keys
+      id: get_ref_keys
+      run: |
+        echo 'ccache=ccache-ubuntu-24.04-gcc-'$(date -u +%Y-w%W) >> $GITHUB_OUTPUT
+
+    - name: Retrieve ccache cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ${{ steps.get_ref_keys.outputs.ccache }}-${{ github.ref }}
+        restore-keys: |
+          ${{ steps.get_ref_keys.outputs.ccache }}-refs/heads/main
 
     - name: Update APT cache
       run: sudo apt update || true

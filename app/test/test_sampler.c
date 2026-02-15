@@ -27,6 +27,8 @@ test_xstats_names_get(uint16_t source_id,
 	unsigned int i;
 	int *num_stats = (int *)user_data;
 
+	RTE_SET_USED(source_id);
+
 	/* If querying size */
 	if (xstats_names == NULL)
 		return *num_stats;
@@ -50,6 +52,9 @@ test_xstats_get(uint16_t source_id,
 {
 	unsigned int i;
 
+	RTE_SET_USED(source_id);
+	RTE_SET_USED(user_data);
+
 	for (i = 0; i < n; i++)
 		values[i] = ids[i] * 100;
 
@@ -67,6 +72,14 @@ test_sink_output(const char *source_name,
 		void *user_data)
 {
 	unsigned int *count = (unsigned int *)user_data;
+
+	RTE_SET_USED(source_name);
+	RTE_SET_USED(source_id);
+	RTE_SET_USED(xstats_names);
+	RTE_SET_USED(ids);
+	RTE_SET_USED(values);
+	RTE_SET_USED(n);
+
 	(*count)++;
 	return 0;
 }

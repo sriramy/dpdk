@@ -1024,3 +1024,17 @@ patterns[i] = source->filter_patterns[i];
 
 return source->num_filter_patterns;
 }
+
+RTE_EXPORT_SYMBOL(rte_sampler_source_get_xstats_count)
+int
+rte_sampler_source_get_xstats_count(struct rte_sampler_source *source)
+{
+	if (source == NULL || !source->valid)
+		return -EINVAL;
+
+	/* If filter is active, return filtered count, otherwise return total count */
+	if (source->filter_active)
+		return source->filtered_count;
+
+	return source->xstats_count;
+}

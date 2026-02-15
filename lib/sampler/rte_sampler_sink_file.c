@@ -2,6 +2,7 @@
  * Copyright(c) 2024 Intel Corporation
  */
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +29,7 @@ struct file_sink_data {
  * Write CSV header
  */
 static void
-		write_csv_header(FILE *fp, const char *source_name,
+		write_csv_header(FILE *fp, const char *source_name __rte_unused,
 		const struct rte_sampler_xstats_name *xstats_names,
 		unsigned int n)
 {
@@ -72,7 +73,7 @@ data->header_written = 1;
 /* Write data row */
 fprintf(data->fp, "%s,%s,%u", timestamp, source_name, source_id);
 for (i = 0; i < n; i++) {
-fprintf(data->fp, ",%lu", values[i]);
+fprintf(data->fp, ",%"PRIu64, values[i]);
 }
 fprintf(data->fp, "\n");
 fflush(data->fp);
@@ -101,17 +102,17 @@ fprintf(data->fp, "{\n");
 fprintf(data->fp, "  \"timestamp\": %ld,\n", now);
 fprintf(data->fp, "  \"source_name\": \"%s\",\n", source_name);
 fprintf(data->fp, "  \"source_id\": %u,\n", source_id);
-fprintf(data->fp, "  \"sample_count\": %lu,\n", data->sample_count);
+fprintf(data->fp, "  \"sample_count\": %"PRIu64",\n", data->sample_count);
 fprintf(data->fp, "  \"stats\": [\n");
 
 for (i = 0; i < n; i++) {
 fprintf(data->fp, "    {\n");
-fprintf(data->fp, "      \"id\": %lu,\n", ids[i]);
+fprintf(data->fp, "      \"id\": %"PRIu64",\n", ids[i]);
 if (xstats_names != NULL) {
 fprintf(data->fp, "      \"name\": \"%s\",\n",
 xstats_names[i].name);
 }
-fprintf(data->fp, "      \"value\": %lu\n", values[i]);
+fprintf(data->fp, "      \"value\": %"PRIu64"\n", values[i]);
 fprintf(data->fp, "    }%s\n", (i < n - 1) ? "," : "");
 }
 
@@ -143,17 +144,17 @@ time(&now);
 tm_info = localtime(&now);
 strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
 
-fprintf(data->fp, "=== Sample #%lu at %s ===\n",
+fprintf(data->fp, "=== Sample #%"PRIu64" at %s ===\n",
 data->sample_count, timestamp);
 fprintf(data->fp, "Source: %s (ID=%u)\n", source_name, source_id);
 fprintf(data->fp, "Statistics:\n");
 
 for (i = 0; i < n; i++) {
 if (xstats_names != NULL) {
-fprintf(data->fp, "  [%lu] %-50s : %lu\n",
+fprintf(data->fp, "  [%"PRIu64"] %-50s : %"PRIu64"\n",
 ids[i], xstats_names[i].name, values[i]);
 } else {
-fprintf(data->fp, "  [%lu] ID=%lu : %lu\n",
+fprintf(data->fp, "  [%u] ID=%"PRIu64" : %"PRIu64"\n",
 i, ids[i], values[i]);
 }
 }
