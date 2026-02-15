@@ -28,7 +28,7 @@ struct file_sink_data {
  * Write CSV header
  */
 static void
-		write_csv_header(FILE *fp, const char *source_name,
+		write_csv_header(FILE *fp, const char *source_name __rte_unused,
 		const struct rte_sampler_xstats_name *xstats_names,
 		unsigned int n)
 {
@@ -153,7 +153,7 @@ if (xstats_names != NULL) {
 fprintf(data->fp, "  [%lu] %-50s : %lu\n",
 ids[i], xstats_names[i].name, values[i]);
 } else {
-fprintf(data->fp, "  [%lu] ID=%lu : %lu\n",
+fprintf(data->fp, "  [%u] ID=%lu : %lu\n",
 i, ids[i], values[i]);
 }
 }
