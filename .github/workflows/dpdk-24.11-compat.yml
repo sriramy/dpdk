@@ -19,6 +19,8 @@ jobs:
   dpdk-24-11-compat:
     name: Build Sampler Against DPDK 24.11
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     env:
       CCACHE_DIR: $HOME/.ccache
       DPDK_VERSION: v24.11
