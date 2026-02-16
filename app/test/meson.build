@@ -175,6 +175,7 @@ source_file_deps = {
     'test_ring_st_peek_stress_zc.c': ['ptr_compress'],
     'test_ring_stress.c': ['ptr_compress'],
     'test_rwlock.c': [],
+    'test_sampler.c': ['sampler'],
     'test_sched.c': ['net', 'sched'],
     'test_security.c': ['net', 'security'],
     'test_security_inline_macsec.c': ['ethdev', 'security'],
