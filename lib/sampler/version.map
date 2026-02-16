@@ -1,0 +1,37 @@
+DPDK_25 {
+	global:
+
+	rte_sampler_eventdev_source_register;
+	rte_sampler_poll;
+	rte_sampler_session_create;
+	rte_sampler_session_free;
+	rte_sampler_session_is_active;
+	rte_sampler_session_process;
+	rte_sampler_session_register_sink;
+	rte_sampler_session_register_source;
+	rte_sampler_session_start;
+	rte_sampler_session_stop;
+	rte_sampler_session_unregister_sink;
+	rte_sampler_session_unregister_source;
+	rte_sampler_sink_ctf_create;
+	rte_sampler_sink_ctf_destroy;
+	rte_sampler_sink_file_create;
+	rte_sampler_sink_file_destroy;
+	rte_sampler_sink_free;
+	rte_sampler_sink_ringbuffer_clear;
+	rte_sampler_sink_ringbuffer_count;
+	rte_sampler_sink_ringbuffer_create;
+	rte_sampler_sink_ringbuffer_destroy;
+	rte_sampler_sink_ringbuffer_read;
+	rte_sampler_source_clear_filter;
+	rte_sampler_source_free;
+	rte_sampler_source_get_filter;
+	rte_sampler_source_get_xstats_count;
+	rte_sampler_source_get_xstats_name;
+	rte_sampler_source_set_filter;
+	rte_sampler_xstats_get;
+	rte_sampler_xstats_names_get;
+	rte_sampler_xstats_reset;
+
+	local: *;
+};
