@@ -45,7 +45,7 @@ jobs:
         restore-keys: |
           ${{ steps.get_ref_keys.outputs.ccache }}-
 
-    - name: Retrieve DPDK 24.11 build cache
+    - name: Retrieve DPDK 24.11 source cache
       id: dpdk-cache
       uses: actions/cache@v4
       with:
@@ -67,43 +67,20 @@ jobs:
           python3-pip \
           python3-pyelftools
 
-    - name: Clone and build DPDK 24.11
+    - name: Clone DPDK 24.11
       if: steps.dpdk-cache.outputs.cache-hit != 'true'
       run: |
-        git clone --depth 1 --branch ${{ env.DPDK_VERSION }} https://github.com/DPDK/dpdk dpdk-24.11-src
-        cd dpdk-24.11-src
-        meson setup build \
-          --prefix=$HOME/dpdk-24.11 \
-          -Dexamples= \
-          -Dtests=false \
-          -Ddisable_drivers=* \
-          -Dmax_numa_nodes=1
-        ninja -C build
-        ninja -C build install
-        cd ..
-        rm -rf dpdk-24.11-src
-
-    - name: Set PKG_CONFIG_PATH for DPDK 24.11
-      run: |
-        echo "PKG_CONFIG_PATH=$HOME/dpdk-24.11/lib/x86_64-linux-gnu/pkgconfig:$HOME/dpdk-24.11/lib/pkgconfig" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=$HOME/dpdk-24.11/lib/x86_64-linux-gnu:$HOME/dpdk-24.11/lib" >> $GITHUB_ENV
-
-    - name: Verify DPDK 24.11 installation
-      run: |
-        pkg-config --modversion libdpdk || true
-        ls -la $HOME/dpdk-24.11/lib/ || true
-        ls -la $HOME/dpdk-24.11/lib/x86_64-linux-gnu/ || true
+        git clone --depth 1 --branch ${{ env.DPDK_VERSION }} https://github.com/DPDK/dpdk dpdk-24.11
 
     - name: Copy sampler library to DPDK 24.11
       run: |
-        cd dpdk-24.11
-        # Create sampler directory structure
-        mkdir -p lib/sampler
-        cp -r $GITHUB_WORKSPACE/sampler-repo/lib/sampler/* lib/sampler/
+        # Create sampler directory structure in DPDK source
+        mkdir -p dpdk-24.11/lib/sampler
+        cp -r sampler-repo/lib/sampler/* dpdk-24.11/lib/sampler/
         
         # Update lib/meson.build to add sampler after eventdev
-        if ! grep -q "sampler" lib/meson.build; then
-          sed -i "/^        'eventdev',/a\\        'sampler', # generic sampler library, depends on eventdev" lib/meson.build
+        if ! grep -q "'sampler'" dpdk-24.11/lib/meson.build; then
+          sed -i "/^        'eventdev',/a\\        'sampler', # generic sampler library, depends on eventdev" dpdk-24.11/lib/meson.build
         fi
 
     - name: Configure DPDK 24.11 with sampler
