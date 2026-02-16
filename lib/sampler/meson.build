@@ -15,4 +15,4 @@ headers = files(
         'rte_sampler_sink_ringbuffer.h',
         'rte_sampler_sink_ctf.h',
 )
-deps += ['eventdev']
+deps += ['eal', 'eventdev']
