@@ -218,7 +218,7 @@ ops.output = ctf_sink_output;
 ops.flags = RTE_SAMPLER_SINK_F_NO_NAMES;  /* Names in metadata */
 
 /* Register sink */
-sink = rte_sampler_sink_register(session, name, &ops, data);
+sink = rte_sampler_session_register_sink(session, name, &ops, data);
 if (sink == NULL) {
 fclose(data->metadata_fp);
 fclose(data->stream_fp);

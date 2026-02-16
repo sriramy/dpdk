@@ -246,7 +246,7 @@ ops.output = file_sink_output;
 ops.flags = 0;  /* Receive names by default */
 
 /* Register sink */
-sink = rte_sampler_sink_register(session, name, &ops, data);
+sink = rte_sampler_session_register_sink(session, name, &ops, data);
 if (sink == NULL) {
 fclose(data->fp);
 rte_free(data);

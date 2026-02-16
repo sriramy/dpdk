@@ -186,7 +186,7 @@ ops.xstats_reset = eventdev_xstats_reset;
 snprintf(source_name, sizeof(source_name), "eventdev_%u", dev_id);
 
 /* Register source */
-source = rte_sampler_source_register(session, source_name, dev_id,
+source = rte_sampler_session_register_source(session, source_name, dev_id,
    &ops, data);
 if (source == NULL) {
 rte_free(data);
