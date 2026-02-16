@@ -161,7 +161,7 @@ source_ops.xstats_get = custom_source_xstats_get;
 source_ops.xstats_reset = custom_source_xstats_reset;
 
 /* Register the source */
-source = rte_sampler_source_register(
+source = rte_sampler_session_register_source(
 session,
 "my_custom_source",  /* Source name */
 0,                    /* source_id (device/instance ID) */
@@ -187,7 +187,7 @@ sink_data->sink_instance_id = 99;  /* Your sink instance ID */
 sink_ops.output = custom_sink_output;
 
 /* Register the sink */
-sink = rte_sampler_sink_register(
+sink = rte_sampler_session_register_sink(
 session,
 "my_custom_sink",     /* Sink name */
 &sink_ops,
@@ -197,7 +197,7 @@ if (sink == NULL) {
 fprintf(stderr, "Failed to register custom sink\n");
 fclose(sink_data->output_file);
 free(sink_data);
-rte_sampler_source_unregister(source);
+rte_sampler_session_unregister_source(session, source);
 free(source_data);
 return;
 }
@@ -287,12 +287,12 @@ source_data1->custom_sampler_id = 100;
 source_ops.xstats_names_get = custom_source_xstats_names_get;
 source_ops.xstats_get = custom_source_xstats_get;
 source_ops.xstats_reset = custom_source_xstats_reset;
-source1 = rte_sampler_source_register(session, "source1", 0, 
+source1 = rte_sampler_session_register_source(session, "source1", 0, 
       &source_ops, source_data1);
 
 source_data2 = malloc(sizeof(*source_data2));
 source_data2->custom_sampler_id = 200;
-source2 = rte_sampler_source_register(session, "source2", 1, 
+source2 = rte_sampler_session_register_source(session, "source2", 1, 
       &source_ops, source_data2);
 
 /* Create sink with ID mapping */
@@ -306,7 +306,7 @@ sink_data->id_map[1].source_id = 1;
 sink_data->id_map[1].sampler_id = source_data2->custom_sampler_id;
 
 sink_ops.output = advanced_sink_output;
-sink = rte_sampler_sink_register(session, "advanced_sink",
+sink = rte_sampler_session_register_sink(session, "advanced_sink",
   &sink_ops, sink_data);
 
 printf("Advanced setup complete!\n");

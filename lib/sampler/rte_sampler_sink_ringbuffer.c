@@ -214,7 +214,7 @@ ops.output = ringbuffer_sink_output;
 ops.flags = RTE_SAMPLER_SINK_F_NO_NAMES;  /* Don't need names in ring buffer */
 
 /* Register sink */
-sink = rte_sampler_sink_register(session, name, &ops, data);
+sink = rte_sampler_session_register_sink(session, name, &ops, data);
 if (sink == NULL) {
 rte_free(data->entries);
 rte_free(data);
@@ -225,7 +225,7 @@ data->sink = sink;
 
 /* Register in global registry */
 if (register_sink(sink, data) < 0) {
-rte_sampler_sink_unregister(sink);
+rte_sampler_sink_free(sink);
 rte_free(data->entries);
 rte_free(data);
 return NULL;
@@ -355,7 +355,7 @@ rte_free(data->entries[i].values);
 rte_free(data->entries);
 rte_free(data);
 
-rte_sampler_sink_unregister(sink);
+rte_sampler_sink_free(sink);
 
 return 0;
 }

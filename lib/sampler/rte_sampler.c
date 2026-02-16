@@ -248,10 +248,14 @@ void
 
 RTE_EXPORT_SYMBOL(rte_sampler_session_start)
 int
-		rte_sampler_session_start(struct rte_sampler_session *session)
+		rte_sampler_session_start(struct rte_sampler_session *session, uint64_t duration)
 {
 if (session == NULL || !session->valid)
 return -EINVAL;
+
+/* Override duration if specified (0 means infinite) */
+if (duration > 0)
+	session->duration_ms = duration;
 
 session->active = 1;
 session->start_time = rte_get_timer_cycles();
@@ -309,9 +313,9 @@ source->valid = 0;
 /* Note: source is part of session structure, not separately allocated */
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_register)
+RTE_EXPORT_SYMBOL(rte_sampler_session_register_source)
 struct rte_sampler_source *
-		rte_sampler_source_register(struct rte_sampler_session *session,
+		rte_sampler_session_register_source(struct rte_sampler_session *session,
 		const char *source_name,
 		uint16_t source_id,
 		const struct rte_sampler_source_ops *ops,
@@ -370,12 +374,17 @@ struct rte_sampler_source *
 	return source;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_unregister)
+RTE_EXPORT_SYMBOL(rte_sampler_session_unregister_source)
 int
-		rte_sampler_source_unregister(struct rte_sampler_source *source)
+		rte_sampler_session_unregister_source(struct rte_sampler_session *session,
+						       struct rte_sampler_source *source)
 {
 if (source == NULL || !source->valid)
 return -EINVAL;
+
+/* Session parameter is provided for API consistency, though not strictly needed
+ * since source has a back-pointer to session */
+(void)session;
 
 source->valid = 0;
 
@@ -393,9 +402,9 @@ sink->valid = 0;
 /* Note: sink is part of session structure, not separately allocated */
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_register)
+RTE_EXPORT_SYMBOL(rte_sampler_session_register_sink)
 struct rte_sampler_sink *
-		rte_sampler_sink_register(struct rte_sampler_session *session,
+		rte_sampler_session_register_sink(struct rte_sampler_session *session,
 		const char *sink_name,
 		const struct rte_sampler_sink_ops *ops,
 		void *user_data)
@@ -452,21 +461,26 @@ struct rte_sampler_sink *
 	return sink;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_unregister)
+RTE_EXPORT_SYMBOL(rte_sampler_session_unregister_sink)
 int
-		rte_sampler_sink_unregister(struct rte_sampler_sink *sink)
+		rte_sampler_session_unregister_sink(struct rte_sampler_session *session,
+						     struct rte_sampler_sink *sink)
 {
 if (sink == NULL || !sink->valid)
 return -EINVAL;
+
+/* Session parameter is provided for API consistency, though not strictly needed
+ * since sink has a back-pointer to session */
+(void)session;
 
 sink->valid = 0;
 
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sample)
+RTE_EXPORT_SYMBOL(rte_sampler_session_process)
 int
-		rte_sampler_sample(struct rte_sampler_session *session)
+		rte_sampler_session_process(struct rte_sampler_session *session)
 {
 	unsigned int i, j;
 	int ret;
@@ -638,7 +652,7 @@ elapsed_ms = (current_time - session->last_sample_time) * 1000 /
      rte_get_timer_hz();
 
 if (elapsed_ms >= session->sample_interval_ms) {
-rte_sampler_sample(session);
+rte_sampler_session_process(session);
 polled++;
 }
 }
