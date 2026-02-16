@@ -39,6 +39,7 @@ libraries = [
         'dmadev',  # eventdev depends on this
         'efd',
         'eventdev',
+        'sampler', # generic sampler library, depends on eventdev
         'dispatcher', # dispatcher depends on eventdev
         'gpudev',
         'gro',
