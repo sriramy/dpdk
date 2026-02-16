@@ -189,7 +189,7 @@ test_sampler_source_register(void)
 		return TEST_FAILED;
 	}
 
-	rte_sampler_source_unregister(source);
+	rte_sampler_session_unregister_source(session, source);
 	rte_sampler_session_free(session);
 	return TEST_SUCCESS;
 }
@@ -225,7 +225,7 @@ test_sampler_sink_register(void)
 		return TEST_FAILED;
 	}
 
-	rte_sampler_sink_unregister(sink);
+	rte_sampler_session_unregister_sink(session, sink);
 	rte_sampler_session_free(session);
 	return TEST_SUCCESS;
 }
@@ -272,7 +272,7 @@ test_sampler_sample_basic(void)
 	sink = rte_sampler_session_register_sink(session, "test_sink", &sink_ops, &sink_count);
 	if (sink == NULL) {
 		printf("Failed to register sink\n");
-		rte_sampler_source_unregister(source);
+		rte_sampler_session_unregister_source(session, source);
 		rte_sampler_session_free(session);
 		return TEST_FAILED;
 	}
@@ -281,23 +281,23 @@ test_sampler_sample_basic(void)
 	ret = rte_sampler_session_process(session);
 	if (ret != 0) {
 		printf("Sampling failed\n");
-		rte_sampler_sink_unregister(sink);
-		rte_sampler_source_unregister(source);
+		rte_sampler_session_unregister_sink(session, sink);
+		rte_sampler_session_unregister_source(session, source);
 		rte_sampler_session_free(session);
 		return TEST_FAILED;
 	}
 
 	if (sink_count != 1) {
 		printf("Expected 1 sample, got %u\n", sink_count);
-		rte_sampler_sink_unregister(sink);
-		rte_sampler_source_unregister(source);
+		rte_sampler_session_unregister_sink(session, sink);
+		rte_sampler_session_unregister_source(session, source);
 		rte_sampler_session_free(session);
 		return TEST_FAILED;
 	}
 
 	rte_sampler_session_stop(session);
-	rte_sampler_sink_unregister(sink);
-	rte_sampler_source_unregister(source);
+	rte_sampler_session_unregister_sink(session, sink);
+	rte_sampler_session_unregister_source(session, source);
 	rte_sampler_session_free(session);
 	return TEST_SUCCESS;
 }
@@ -350,7 +350,7 @@ test_sampler_dynamic_sources(void)
 			printf("Failed to register source %u (old limit was %u)\n", i, OLD_MAX_SOURCES);
 			while (i > 0) {
 				i--;
-				rte_sampler_source_unregister(sources[i]);
+				rte_sampler_session_unregister_source(session, sources[i]);
 			}
 			rte_sampler_session_free(session);
 			free(sources);
@@ -365,7 +365,7 @@ test_sampler_dynamic_sources(void)
 	if (sink == NULL) {
 		printf("Failed to register sink\n");
 		for (i = 0; i < num_sources; i++)
-			rte_sampler_source_unregister(sources[i]);
+			rte_sampler_session_unregister_source(session, sources[i]);
 		rte_sampler_session_free(session);
 		free(sources);
 		return TEST_FAILED;
@@ -375,9 +375,9 @@ test_sampler_dynamic_sources(void)
 	ret = rte_sampler_session_process(session);
 	if (ret != 0) {
 		printf("Sampling failed\n");
-		rte_sampler_sink_unregister(sink);
+		rte_sampler_session_unregister_sink(session, sink);
 		for (i = 0; i < num_sources; i++)
-			rte_sampler_source_unregister(sources[i]);
+			rte_sampler_session_unregister_source(session, sources[i]);
 		rte_sampler_session_free(session);
 		free(sources);
 		return TEST_FAILED;
@@ -385,18 +385,18 @@ test_sampler_dynamic_sources(void)
 
 	if (sink_count != num_sources) {
 		printf("Expected %u samples, got %u\n", num_sources, sink_count);
-		rte_sampler_sink_unregister(sink);
+		rte_sampler_session_unregister_sink(session, sink);
 		for (i = 0; i < num_sources; i++)
-			rte_sampler_source_unregister(sources[i]);
+			rte_sampler_session_unregister_source(session, sources[i]);
 		rte_sampler_session_free(session);
 		free(sources);
 		return TEST_FAILED;
 	}
 
 	rte_sampler_session_stop(session);
-	rte_sampler_sink_unregister(sink);
+	rte_sampler_session_unregister_sink(session, sink);
 	for (i = 0; i < num_sources; i++)
-		rte_sampler_source_unregister(sources[i]);
+		rte_sampler_session_unregister_source(session, sources[i]);
 	rte_sampler_session_free(session);
 	free(sources);
 	
@@ -485,7 +485,7 @@ test_sampler_filter(void)
 	ret = rte_sampler_source_set_filter(source, patterns, 2);
 	if (ret != 0) {
 		printf("Failed to set filter\n");
-		rte_sampler_source_unregister(source);
+		rte_sampler_session_unregister_source(session, source);
 		rte_sampler_session_free(session);
 		return TEST_FAILED;
 	}
@@ -493,12 +493,12 @@ test_sampler_filter(void)
 	ret = rte_sampler_source_clear_filter(source);
 	if (ret != 0) {
 		printf("Failed to clear filter\n");
-		rte_sampler_source_unregister(source);
+		rte_sampler_session_unregister_source(session, source);
 		rte_sampler_session_free(session);
 		return TEST_FAILED;
 	}
 
-	rte_sampler_source_unregister(source);
+	rte_sampler_session_unregister_source(session, source);
 	rte_sampler_session_free(session);
 	return TEST_SUCCESS;
 }

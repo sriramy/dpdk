@@ -225,7 +225,7 @@ data->sink = sink;
 
 /* Register in global registry */
 if (register_sink(sink, data) < 0) {
-rte_sampler_sink_unregister(sink);
+rte_sampler_sink_free(sink);
 rte_free(data->entries);
 rte_free(data);
 return NULL;
@@ -355,7 +355,7 @@ rte_free(data->entries[i].values);
 rte_free(data->entries);
 rte_free(data);
 
-rte_sampler_sink_unregister(sink);
+rte_sampler_sink_free(sink);
 
 return 0;
 }

@@ -265,6 +265,6 @@ int
 if (sink == NULL)
 return -EINVAL;
 
-rte_sampler_sink_unregister(sink);
+rte_sampler_sink_free(sink);
 return 0;
 }
