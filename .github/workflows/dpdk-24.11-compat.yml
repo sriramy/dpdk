@@ -1,10 +1,6 @@
 name: DPDK 24.11 Compatibility Test
 
 on:
-  push:
-    paths:
-      - 'lib/sampler/**'
-      - '.github/workflows/dpdk-24.11-compat.yml'
   pull_request:
     paths:
       - 'lib/sampler/**'
