@@ -8,7 +8,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
-#include <eal_export.h>
 #include <rte_common.h>
 #include <rte_malloc.h>
 #include <rte_cycles.h>
@@ -164,7 +163,6 @@ write_ctf_metadata(data);
 return write_ctf_event(data, source_name, source_id, ids, values, n);
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ctf_create)
 struct rte_sampler_sink *
 		rte_sampler_sink_ctf_create(struct rte_sampler_session *session,
 		const char *name,
@@ -229,7 +227,6 @@ return NULL;
 return sink;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ctf_destroy)
 int
 		rte_sampler_sink_ctf_destroy(struct rte_sampler_sink *sink)
 {

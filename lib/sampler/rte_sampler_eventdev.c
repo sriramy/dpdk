@@ -3,7 +3,6 @@
  */
 
 #include <string.h>
-#include <eal_export.h>
 #include <rte_common.h>
 #include <rte_eventdev.h>
 #include <rte_malloc.h>
@@ -155,7 +154,6 @@ return -EINVAL;
   n);
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_eventdev_source_register)
 struct rte_sampler_source *
 		rte_sampler_eventdev_source_register(struct rte_sampler_session *session,
 		uint8_t dev_id,
