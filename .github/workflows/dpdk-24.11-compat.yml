@@ -70,6 +70,9 @@ jobs:
 
     - name: Copy sampler library to DPDK 24.11
       run: |
+        # Remove old sampler files if they exist
+        rm -rf dpdk-24.11/lib/sampler
+        
         # Create sampler directory structure in DPDK source
         mkdir -p dpdk-24.11/lib/sampler
         cp -r sampler-repo/lib/sampler/* dpdk-24.11/lib/sampler/
@@ -82,6 +85,8 @@ jobs:
     - name: Configure DPDK 24.11 with sampler
       run: |
         cd dpdk-24.11
+        # Remove old build directory to ensure clean build
+        rm -rf build
         meson setup build \
           -Dexamples= \
           -Dtests=false \
