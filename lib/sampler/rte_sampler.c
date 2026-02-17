@@ -3,7 +3,6 @@
  */
 
 #include <string.h>
-#include <eal_export.h>
 #include <rte_common.h>
 #include <rte_malloc.h>
 #include <rte_log.h>
@@ -89,7 +88,6 @@ static int matches_filter(struct rte_sampler_source *source, const char *name);
 static int match_pattern(const char *pattern, const char *str);
 
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_create)
 struct rte_sampler_session *
 		rte_sampler_session_create(const struct rte_sampler_session_conf *conf)
 {
@@ -195,7 +193,6 @@ struct rte_sampler_session *
 	return session;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_free)
 void
 		rte_sampler_session_free(struct rte_sampler_session *session)
 {
@@ -246,7 +243,6 @@ void
 	rte_free(session);
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_start)
 int
 		rte_sampler_session_start(struct rte_sampler_session *session, uint64_t duration)
 {
@@ -264,7 +260,6 @@ session->last_sample_time = session->start_time;
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_stop)
 int
 		rte_sampler_session_stop(struct rte_sampler_session *session)
 {
@@ -276,7 +271,6 @@ session->active = 0;
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_is_active)
 int
 		rte_sampler_session_is_active(struct rte_sampler_session *session)
 {
@@ -302,7 +296,6 @@ return 0;
 return 1;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_free)
 void
 		rte_sampler_source_free(struct rte_sampler_source *source)
 {
@@ -313,7 +306,6 @@ source->valid = 0;
 /* Note: source is part of session structure, not separately allocated */
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_register_source)
 struct rte_sampler_source *
 		rte_sampler_session_register_source(struct rte_sampler_session *session,
 		const char *source_name,
@@ -374,7 +366,6 @@ struct rte_sampler_source *
 	return source;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_unregister_source)
 int
 		rte_sampler_session_unregister_source(struct rte_sampler_session *session,
 						       struct rte_sampler_source *source)
@@ -391,7 +382,6 @@ source->valid = 0;
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_free)
 void
 		rte_sampler_sink_free(struct rte_sampler_sink *sink)
 {
@@ -402,7 +392,6 @@ sink->valid = 0;
 /* Note: sink is part of session structure, not separately allocated */
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_register_sink)
 struct rte_sampler_sink *
 		rte_sampler_session_register_sink(struct rte_sampler_session *session,
 		const char *sink_name,
@@ -461,7 +450,6 @@ struct rte_sampler_sink *
 	return sink;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_unregister_sink)
 int
 		rte_sampler_session_unregister_sink(struct rte_sampler_session *session,
 						     struct rte_sampler_sink *sink)
@@ -478,7 +466,6 @@ sink->valid = 0;
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_session_process)
 int
 		rte_sampler_session_process(struct rte_sampler_session *session)
 {
@@ -624,7 +611,6 @@ session->last_sample_time = rte_get_timer_cycles();
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_poll)
 int
 rte_sampler_poll(void)
 {
@@ -660,7 +646,6 @@ polled++;
 return polled;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_xstats_names_get)
 int
 		rte_sampler_xstats_names_get(struct rte_sampler_session *session,
 		struct rte_sampler_source *source,
@@ -708,7 +693,6 @@ total += src->xstats_count;
 return total;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_xstats_get)
 int
 		rte_sampler_xstats_get(struct rte_sampler_session *session,
 		struct rte_sampler_source *source,
@@ -765,7 +749,6 @@ values[total++] = src->values[j];
 return total;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_xstats_reset)
 int
 		rte_sampler_xstats_reset(struct rte_sampler_session *session,
 		struct rte_sampler_source *source,
@@ -824,7 +807,6 @@ if (src->values != NULL && src->xstats_capacity > 0)
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_get_xstats_name)
 int
 		rte_sampler_source_get_xstats_name(struct rte_sampler_source *source,
 		uint64_t id,
@@ -928,7 +910,6 @@ source->filtered_ids[j++] = source->ids[i];
 source->filtered_count = j;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_set_filter)
 int
 		rte_sampler_source_set_filter(struct rte_sampler_source *source,
 		const char **patterns,
@@ -987,7 +968,6 @@ int
 	return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_clear_filter)
 int
 		rte_sampler_source_clear_filter(struct rte_sampler_source *source)
 {
@@ -1013,7 +993,6 @@ source->filtered_ids[i] = source->ids[i];
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_get_filter)
 int
 		rte_sampler_source_get_filter(struct rte_sampler_source *source,
        char **patterns,
@@ -1039,7 +1018,6 @@ patterns[i] = source->filter_patterns[i];
 return source->num_filter_patterns;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_source_get_xstats_count)
 int
 rte_sampler_source_get_xstats_count(struct rte_sampler_source *source)
 {

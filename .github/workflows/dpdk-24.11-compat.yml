@@ -1,0 +1,114 @@
+name: DPDK 24.11 Compatibility Test
+
+on:
+  pull_request:
+    paths:
+      - 'lib/sampler/**'
+      - '.github/workflows/dpdk-24.11-compat.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -exo pipefail {0}
+
+jobs:
+  dpdk-24-11-compat:
+    name: Build Sampler Against DPDK 24.11
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    env:
+      CCACHE_DIR: $HOME/.ccache
+      DPDK_VERSION: v24.11
+
+    steps:
+    - name: Checkout sampler sources
+      uses: actions/checkout@v4
+      with:
+        path: sampler-repo
+
+    - name: Generate cache keys
+      id: get_ref_keys
+      run: |
+        echo 'ccache=ccache-ubuntu-22.04-dpdk24.11-'$(date -u +%Y-w%W) >> $GITHUB_OUTPUT
+        echo 'dpdk=dpdk-24.11-build' >> $GITHUB_OUTPUT
+
+    - name: Retrieve ccache cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ${{ steps.get_ref_keys.outputs.ccache }}-${{ github.ref }}
+        restore-keys: |
+          ${{ steps.get_ref_keys.outputs.ccache }}-
+
+    - name: Retrieve DPDK 24.11 source cache
+      id: dpdk-cache
+      uses: actions/cache@v4
+      with:
+        path: dpdk-24.11
+        key: ${{ steps.get_ref_keys.outputs.dpdk }}
+
+    - name: Update APT cache
+      run: sudo apt update || true
+
+    - name: Install build dependencies
+      run: |
+        sudo apt install -y \
+          build-essential \
+          ccache \
+          libnuma-dev \
+          meson \
+          ninja-build \
+          pkg-config \
+          python3-pip \
+          python3-pyelftools
+
+    - name: Clone DPDK 24.11
+      if: steps.dpdk-cache.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth 1 --branch ${{ env.DPDK_VERSION }} https://github.com/DPDK/dpdk dpdk-24.11
+
+    - name: Copy sampler library to DPDK 24.11
+      run: |
+        # Remove old sampler files if they exist
+        rm -rf dpdk-24.11/lib/sampler
+        
+        # Create sampler directory structure in DPDK source
+        mkdir -p dpdk-24.11/lib/sampler
+        cp -r sampler-repo/lib/sampler/* dpdk-24.11/lib/sampler/
+        
+        # Update lib/meson.build to add sampler after eventdev
+        if ! grep -q "'sampler'" dpdk-24.11/lib/meson.build; then
+          sed -i "/^        'eventdev',/a\\        'sampler', # generic sampler library, depends on eventdev" dpdk-24.11/lib/meson.build
+        fi
+
+    - name: Configure DPDK 24.11 with sampler
+      run: |
+        cd dpdk-24.11
+        # Remove old build directory to ensure clean build
+        rm -rf build
+        meson setup build \
+          -Dexamples= \
+          -Dtests=false \
+          -Dmax_numa_nodes=1 \
+          -Dwerror=true
+
+    - name: Build sampler library against DPDK 24.11
+      run: |
+        cd dpdk-24.11
+        ninja -C build lib/librte_sampler.a
+
+    - name: Verify sampler library was built
+      run: |
+        cd dpdk-24.11
+        ls -lh build/lib/librte_sampler.a
+        file build/lib/librte_sampler.a
+
+    - name: Upload build logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dpdk-24-11-build-logs
+        path: |
+          dpdk-24.11/build/.ninja_log
+          dpdk-24.11/build/meson-logs/meson-log.txt

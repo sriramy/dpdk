@@ -3,7 +3,6 @@
  */
 
 #include <string.h>
-#include <eal_export.h>
 #include <rte_common.h>
 #include <rte_malloc.h>
 #include <rte_cycles.h>
@@ -175,7 +174,6 @@ rte_spinlock_unlock(&data->lock);
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_create)
 struct rte_sampler_sink *
 		rte_sampler_sink_ringbuffer_create(struct rte_sampler_session *session,
 		const char *name,
@@ -234,7 +232,6 @@ return NULL;
 return sink;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_count)
 int
 		rte_sampler_sink_ringbuffer_count(struct rte_sampler_sink *sink)
 {
@@ -252,7 +249,6 @@ rte_spinlock_unlock(&data->lock);
 return count;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_read)
 int
 		rte_sampler_sink_ringbuffer_read(struct rte_sampler_sink *sink,
 		struct rte_sampler_ringbuffer_entry *entries,
@@ -299,7 +295,6 @@ rte_spinlock_unlock(&data->lock);
 return num_read;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_clear)
 int
 		rte_sampler_sink_ringbuffer_clear(struct rte_sampler_sink *sink)
 {
@@ -330,7 +325,6 @@ rte_spinlock_unlock(&data->lock);
 return 0;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_ringbuffer_destroy)
 int
 		rte_sampler_sink_ringbuffer_destroy(struct rte_sampler_sink *sink)
 {

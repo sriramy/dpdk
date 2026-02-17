@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <eal_export.h>
 #include <rte_common.h>
 #include <rte_malloc.h>
 #include <rte_sampler.h>
@@ -204,7 +203,6 @@ ret = -EINVAL;
 return ret;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_file_create)
 struct rte_sampler_sink *
 		rte_sampler_sink_file_create(struct rte_sampler_session *session,
 		const char *name,
@@ -256,7 +254,6 @@ return NULL;
 return sink;
 }
 
-RTE_EXPORT_SYMBOL(rte_sampler_sink_file_destroy)
 int
 		rte_sampler_sink_file_destroy(struct rte_sampler_sink *sink)
 {
