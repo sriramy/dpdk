@@ -4,6 +4,7 @@
 #include "test.h"
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <unistd.h>
 
 #include <rte_ethdev.h>
@@ -350,9 +351,9 @@ test_memif_incomplete_segment_handling(void)
 		return -1;
 	}
 
-	printf("Stats before: opackets=%lu, oerrors=%lu\n",
+	printf("Stats before: opackets=%" PRIu64 ", oerrors=%" PRIu64 "\n",
 	       stats_before.opackets, stats_before.oerrors);
-	printf("Stats after:  opackets=%lu, oerrors=%lu\n",
+	printf("Stats after:  opackets=%" PRIu64 ", oerrors=%" PRIu64 "\n",
 	       stats_after.opackets, stats_after.oerrors);
 
 	if (stats_after.opackets <= stats_before.opackets) {
