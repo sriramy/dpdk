@@ -378,6 +378,12 @@ next_slot1:
 			n_slots--;
 
 			if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
+				if (unlikely(n_slots == 0)) {
+					rte_pktmbuf_free(mbuf_head);
+					rte_pktmbuf_free_bulk(mbufs + rx_pkts,
+							MAX_PKT_BURST - rx_pkts);
+					goto no_free_bufs;
+				}
 				mbuf_tail = mbuf;
 				mbuf = rte_pktmbuf_alloc(mq->mempool);
 				if (unlikely(mbuf == NULL)) {
@@ -464,8 +470,13 @@ next_slot2:
 			cur_slot++;
 			n_slots--;
 
-			if (d0->flags & MEMIF_DESC_FLAG_NEXT)
+			if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
+				if (unlikely(n_slots == 0)) {
+					rte_pktmbuf_free(mbuf_head);
+					goto no_free_bufs;
+				}
 				goto next_slot2;
+			}
 
 			mq->n_bytes += rte_pktmbuf_pkt_len(mbuf_head);
 			*bufs++ = mbuf_head;
@@ -572,6 +583,11 @@ next_slot:
 		cur_slot++;
 		n_slots--;
 		if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
+			if (unlikely(n_slots == 0)) {
+				MIF_LOG(ERR, "Incomplete multi-segment packet");
+				rte_pktmbuf_free(mbuf_head);
+				goto refill;
+			}
 			s0 = cur_slot & mask;
 			d0 = &ring->desc[s0];
 			mbuf_tail = mbuf;
