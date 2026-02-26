@@ -194,7 +194,7 @@ struct rte_sampler_session *
 }
 
 void
-		rte_sampler_session_free(struct rte_sampler_session *session)
+rte_sampler_session_free(struct rte_sampler_session *session)
 {
 	unsigned int i;
 
@@ -367,8 +367,8 @@ struct rte_sampler_source *
 }
 
 int
-		rte_sampler_session_unregister_source(struct rte_sampler_session *session,
-						       struct rte_sampler_source *source)
+rte_sampler_session_unregister_source(struct rte_sampler_session *session,
+				       struct rte_sampler_source *source)
 {
 if (source == NULL || !source->valid)
 return -EINVAL;
