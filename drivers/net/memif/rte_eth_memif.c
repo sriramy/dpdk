@@ -374,11 +374,8 @@ next_slot1:
 			rte_memcpy(rte_pktmbuf_mtod(mbuf, void *),
 				(uint8_t *)memif_get_buffer(proc_private, d0), cp_len);
 
-			cur_slot++;
-			n_slots--;
-
 			if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
-				if (unlikely(n_slots == 0)) {
+				if (unlikely(n_slots <= 1)) {
 					rte_pktmbuf_free(mbuf_head);
 					rte_pktmbuf_free_bulk(mbufs + rx_pkts,
 							MAX_PKT_BURST - rx_pkts);
@@ -399,13 +396,18 @@ next_slot1:
 							MAX_PKT_BURST - rx_pkts);
 					goto no_free_bufs;
 				}
-				goto next_slot1;
+			} else {
+				mq->n_bytes += rte_pktmbuf_pkt_len(mbuf_head);
+				*bufs++ = mbuf_head;
+				rx_pkts++;
+				n_rx_pkts++;
 			}
 
-			mq->n_bytes += rte_pktmbuf_pkt_len(mbuf_head);
-			*bufs++ = mbuf_head;
-			rx_pkts++;
-			n_rx_pkts++;
+			cur_slot++;
+			n_slots--;
+
+			if (d0->flags & MEMIF_DESC_FLAG_NEXT)
+				goto next_slot1;
 		}
 
 		if (rx_pkts < MAX_PKT_BURST) {
@@ -467,20 +469,22 @@ next_slot2:
 				src_len -= cp_len;
 			} while (src_len);
 
-			cur_slot++;
-			n_slots--;
-
 			if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
-				if (unlikely(n_slots == 0)) {
+				if (unlikely(n_slots <= 1)) {
 					rte_pktmbuf_free(mbuf_head);
 					goto no_free_bufs;
 				}
-				goto next_slot2;
+			} else {
+				mq->n_bytes += rte_pktmbuf_pkt_len(mbuf_head);
+				*bufs++ = mbuf_head;
+				n_rx_pkts++;
 			}
 
-			mq->n_bytes += rte_pktmbuf_pkt_len(mbuf_head);
-			*bufs++ = mbuf_head;
-			n_rx_pkts++;
+			cur_slot++;
+			n_slots--;
+
+			if (d0->flags & MEMIF_DESC_FLAG_NEXT)
+				goto next_slot2;
 		}
 	}
 
@@ -580,14 +584,14 @@ next_slot:
 
 		mq->n_bytes += rte_pktmbuf_data_len(mbuf);
 
-		cur_slot++;
-		n_slots--;
 		if (d0->flags & MEMIF_DESC_FLAG_NEXT) {
-			if (unlikely(n_slots == 0)) {
+			if (unlikely(n_slots <= 1)) {
 				MIF_LOG(ERR, "Incomplete multi-segment packet");
 				rte_pktmbuf_free(mbuf_head);
 				goto refill;
 			}
+			cur_slot++;
+			n_slots--;
 			s0 = cur_slot & mask;
 			d0 = &ring->desc[s0];
 			mbuf_tail = mbuf;
@@ -599,6 +603,9 @@ next_slot:
 			}
 			goto next_slot;
 		}
+
+		cur_slot++;
+		n_slots--;
 
 		*bufs++ = mbuf_head;
 		n_rx_pkts++;
