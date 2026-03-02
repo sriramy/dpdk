@@ -58,4 +58,4 @@ test_memif_pmd(void)
 	return unit_test_suite_runner(&memif_pmd_testsuite);
 }
 
-REGISTER_FAST_TEST(memif_pmd_autotest, true, true, test_memif_pmd);
+REGISTER_FAST_TEST(memif_pmd_autotest, NOHUGE_OK, ASAN_OK, test_memif_pmd);
