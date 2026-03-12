@@ -36,7 +36,7 @@ ethdev_tx_node_process(struct rte_graph *graph, struct rte_node *node,
 }
 
 static int
-ethdev_tx_node_init(const struct rte_graph *graph, struct rte_node *node)
+ethdev_tx_node_init(const struct rte_graph *graph __rte_unused, struct rte_node *node)
 {
 	ethdev_tx_node_ctx_t *ctx = (ethdev_tx_node_ctx_t *)node->ctx;
 	uint64_t port_id = RTE_MAX_ETHPORTS;
@@ -53,7 +53,7 @@ ethdev_tx_node_init(const struct rte_graph *graph, struct rte_node *node)
 
 	/* Update port and queue */
 	ctx->port = port_id;
-	ctx->queue = graph->id;
+	ctx->queue = 0;
 
 	return 0;
 }

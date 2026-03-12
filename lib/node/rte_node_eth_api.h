@@ -75,6 +75,52 @@ int rte_node_eth_config(struct rte_node_ethdev_config *cfg,
 __rte_experimental
 int rte_node_ethdev_rx_next_update(rte_node_t id, const char *edge_name);
 
+/**
+ * Config for individual ethdev_rx node setup.
+ */
+struct rte_node_ethdev_rx_config {
+	uint16_t link_id;
+	/**< Port identifier */
+	uint8_t queue_id;
+	/**< Queue identifier */
+	char next_node[RTE_NODE_NAMESIZE];
+	/**< Name of the next node after ethdev_rx */
+};
+
+/**
+ * Setup an individual ethdev_rx node.
+ *
+ * @param config
+ *   Pointer to ethdev rx node config.
+ *
+ * @return
+ *   Node id on success, RTE_NODE_ID_INVALID otherwise.
+ */
+__rte_experimental
+rte_node_t rte_node_ethdev_rx_config(struct rte_node_ethdev_rx_config *config);
+
+/**
+ * Config for individual ethdev_tx node setup.
+ */
+struct rte_node_ethdev_tx_config {
+	uint16_t link_id;
+	/**< Port identifier */
+	uint8_t queue_id;
+	/**< Queue identifier */
+};
+
+/**
+ * Setup an individual ethdev_tx node.
+ *
+ * @param config
+ *   Pointer to ethdev tx node config.
+ *
+ * @return
+ *   Node id on success, RTE_NODE_ID_INVALID otherwise.
+ */
+__rte_experimental
+rte_node_t rte_node_ethdev_tx_config(struct rte_node_ethdev_tx_config *config);
+
 #ifdef __cplusplus
 }
 #endif

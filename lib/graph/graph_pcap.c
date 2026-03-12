@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <rte_ethdev.h>
+#include <rte_eventdev.h>
 #include <rte_mbuf.h>
 #include <rte_pcapng.h>
 
@@ -215,6 +216,9 @@ graph_pcap_dispatch(struct rte_graph *graph,
 	for (i = 0; i < num_packets; i++) {
 		struct rte_mbuf *mc;
 		mbuf = (struct rte_mbuf *)objs[i];
+
+		if (node->flags & RTE_NODE_EVENTS_F)
+			mbuf = ((struct rte_event *)objs[i])->mbuf;
 
 		mc = rte_pcapng_copy(mbuf->port, 0, mbuf, pkt_mp, mbuf->pkt_len, 0, comment);
 		if (mc == NULL)
