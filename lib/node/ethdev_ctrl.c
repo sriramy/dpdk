@@ -188,3 +188,60 @@ found:
 exit:
 	return rc;
 }
+
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_node_ethdev_rx_config, 26.03)
+rte_node_t
+rte_node_ethdev_rx_config(struct rte_node_ethdev_rx_config *config)
+{
+	struct ethdev_rx_node_main *rx_node_data;
+	struct rte_node_register *rx_node;
+	char name[RTE_NODE_NAMESIZE];
+	ethdev_rx_node_elem_t *elem;
+	const char *next_node = config->next_node;
+	rte_node_t id;
+
+	rx_node_data = ethdev_rx_get_node_data_get();
+	rx_node = ethdev_rx_node_get();
+	snprintf(name, sizeof(name), "%u-%u", config->link_id, config->queue_id);
+
+	id = rte_node_clone(rx_node->id, name);
+	if (id == RTE_NODE_ID_INVALID)
+		return id;
+
+	rte_node_edge_update(id, RTE_EDGE_ID_INVALID, &next_node, 1);
+
+	elem = calloc(1, sizeof(ethdev_rx_node_elem_t));
+	if (elem == NULL)
+		return RTE_NODE_ID_INVALID;
+
+	elem->ctx.port_id = config->link_id;
+	elem->ctx.queue_id = config->queue_id;
+	elem->ctx.cls_next = rte_node_edge_count(id) - 1;
+	elem->nid = id;
+	elem->next = rx_node_data->head;
+	rx_node_data->head = elem;
+
+	return id;
+}
+
+RTE_EXPORT_EXPERIMENTAL_SYMBOL(rte_node_ethdev_tx_config, 26.03)
+rte_node_t
+rte_node_ethdev_tx_config(struct rte_node_ethdev_tx_config *config)
+{
+	struct ethdev_tx_node_main *tx_node_data;
+	struct rte_node_register *tx_node;
+	char name[RTE_NODE_NAMESIZE];
+	rte_node_t id;
+
+	tx_node_data = ethdev_tx_node_data_get();
+	tx_node = ethdev_tx_node_get();
+
+	snprintf(name, sizeof(name), "%u-%u", config->link_id, config->queue_id);
+	id = rte_node_clone(tx_node->id, name);
+	if (id == RTE_NODE_ID_INVALID)
+		return id;
+
+	tx_node_data->nodes[config->link_id] = id;
+
+	return id;
+}

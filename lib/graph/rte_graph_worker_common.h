@@ -105,6 +105,7 @@ struct __rte_cache_aligned rte_node {
 
 	/** Original process function when pcap is enabled. */
 	rte_node_process_t original_process;
+	uint64_t flags;		/**< Node configuration flags. */
 
 	/** Fast schedule area for mcore dispatch model. */
 	union {
